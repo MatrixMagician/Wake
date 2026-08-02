@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -85,8 +84,5 @@ func newLogger(level string) (*slog.Logger, error) {
 	}
 	// Text rather than JSON: the daemon's own logs go to the journal, where a
 	// human reads them. The machine-readable output is the snapshot.
-	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level:      l,
-		TimeFormat: time.RFC3339,
-	})), nil
+	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: l})), nil
 }

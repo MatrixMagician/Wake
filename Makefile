@@ -10,7 +10,7 @@ PKG     := github.com/MatrixMagician/wake
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X $(PKG)/internal/version.Version=$(VERSION)
 
-.PHONY: all build generate test integration lint fmt perf clean tools doctor
+.PHONY: all build generate test integration smoke lint fmt perf clean tools
 
 all: build
 
@@ -57,3 +57,7 @@ tools:
 clean:
 	rm -f $(BINARY)
 	rm -f internal/loader/bpf_*.o internal/loader/bpf_*.go
+
+## smoke: end-to-end check against a live kernel. Requires root.
+smoke: build
+	sudo ./testdata/smoke.sh

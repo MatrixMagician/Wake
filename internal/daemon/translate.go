@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/MatrixMagician/wake/internal/config"
-	"github.com/MatrixMagician/wake/internal/event"
 	"github.com/MatrixMagician/wake/internal/loader"
 	"github.com/MatrixMagician/wake/internal/trigger"
 )

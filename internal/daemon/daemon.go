@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -39,6 +40,7 @@ type Daemon struct {
 	enricher *enrich.Cache
 	engine   *trigger.Engine
 	writer   *snapshot.Writer
+	pruner   *snapshot.Pruner
 	rec      *recorder.Recorder
 	srv      *ctl.Server
 	src      loader.Source
@@ -49,6 +51,7 @@ type Daemon struct {
 	snapshots    int
 	snapshotSize int64
 	lastSnapshot *time.Time
+	pending      []chan snapshotOutcome
 }
 
 // New builds a daemon from configuration. It loads nothing into the kernel
@@ -75,15 +78,14 @@ func New(cfg *config.Config, socketPath string, log *slog.Logger) (*Daemon, erro
 	}
 
 	d := &Daemon{
-		cfg:      cfg,
-		log:      log,
-		drops:    drops,
-		ring:     rg,
-		enricher: enrich.New(enrichCapacity, maxAncestors, enrich.NewProcfsSource()),
-		engine:   engine,
-		writer: snapshot.NewWriter(snapshot.WriterConfig{
-			Root: cfg.Snapshot.Dir,
-		}),
+		cfg:       cfg,
+		log:       log,
+		drops:     drops,
+		ring:      rg,
+		enricher:  enrich.New(enrichCapacity, maxAncestors, enrich.NewProcfsSource()),
+		engine:    engine,
+		writer:    snapshot.NewWriter(cfg.Snapshot.Dir, version.Version),
+		pruner:    snapshot.NewPruner(cfg.Snapshot.Dir),
 		startedAt: time.Now(),
 	}
 
@@ -241,34 +243,103 @@ func (d *Daemon) takeSnapshot(f trigger.Firing) {
 	})
 	if err != nil {
 		d.log.Error("snapshot failed", "rule", f.Rule, "err", err)
+		d.notifyPending(snapshotOutcome{err: err})
 		return
 	}
+	d.notifyPending(snapshotOutcome{path: res.Path, events: len(events)})
 	d.log.Info("snapshot written",
 		"path", res.Path, "events", len(events), "rule", f.Rule, "reason", f.Reason)
 
 	now := time.Now()
 	d.mu.Lock()
-	d.snapshots++
 	d.lastSnapshot = &now
 	d.mu.Unlock()
 
-	if _, err := d.writer.Prune(snapshot.RetentionSettings{
+	pruned, err := d.pruner.Prune(snapshot.RetentionSettings{
 		MaxCount:      d.cfg.Snapshot.RetentionCount,
 		MaxTotalBytes: d.cfg.Snapshot.RetentionBytes,
-	}); err != nil {
+	}, false)
+	if err != nil {
 		d.log.Warn("retention pruning failed", "err", err)
+		return
 	}
+	if len(pruned.Removed) > 0 {
+		d.log.Info("retention pruned old snapshots",
+			"removed", len(pruned.Removed), "freed", pruned.FreedBytes)
+	}
+	d.mu.Lock()
+	d.snapshots = len(pruned.Kept)
+	d.snapshotSize = d.dirSize()
+	d.mu.Unlock()
 }
 
-// Trigger takes a manual snapshot. Used by SIGUSR1 and the control socket.
+// Trigger takes a manual snapshot and waits for it, so that `wake trigger`
+// can print the path it actually wrote. An operator who is told "snapshot
+// written" and then cannot find it has been lied to.
 func (d *Daemon) Trigger(reason string) ctl.TriggerResult {
 	if !d.cfg.Triggers.Manual.Enabled {
 		return ctl.TriggerResult{Accepted: false,
 			Message: "manual triggers are disabled in the configuration"}
 	}
+
+	done := make(chan snapshotOutcome, 1)
+	d.mu.Lock()
+	d.pending = append(d.pending, done)
+	d.mu.Unlock()
+
 	d.engine.Manual(reason)
-	return ctl.TriggerResult{Accepted: true,
-		Message: "snapshot requested; see the journal for the path"}
+
+	select {
+	case out := <-done:
+		if out.err != nil {
+			return ctl.TriggerResult{Accepted: false,
+				Message: fmt.Sprintf("snapshot failed: %v", out.err)}
+		}
+		return ctl.TriggerResult{Accepted: true, Path: out.path, Events: out.events}
+	case <-time.After(manualTriggerTimeout):
+		// The snapshot may still be in flight; say so rather than claim
+		// either success or failure.
+		return ctl.TriggerResult{Accepted: true,
+			Message: "snapshot requested but still being written; see the journal for the path"}
+	}
+}
+
+// manualTriggerTimeout bounds how long `wake trigger` waits. A large ring
+// takes a moment to compress, and blocking a support engineer's terminal
+// indefinitely is worse than telling them to check the journal.
+const manualTriggerTimeout = 30 * time.Second
+
+// snapshotOutcome reports a completed snapshot to a waiting manual trigger.
+type snapshotOutcome struct {
+	path   string
+	events int
+	err    error
+}
+
+// dirSize totals the snapshot directory, for status output.
+func (d *Daemon) dirSize() int64 {
+	var total int64
+	_ = filepath.WalkDir(d.cfg.Snapshot.Dir, func(_ string, e os.DirEntry, err error) error {
+		if err != nil || e.IsDir() {
+			return nil //nolint:nilerr // a partial total beats no total
+		}
+		if fi, err := e.Info(); err == nil {
+			total += fi.Size()
+		}
+		return nil
+	})
+	return total
+}
+
+// notifyPending releases anything waiting on a manual trigger.
+func (d *Daemon) notifyPending(out snapshotOutcome) {
+	d.mu.Lock()
+	waiters := d.pending
+	d.pending = nil
+	d.mu.Unlock()
+	for _, w := range waiters {
+		w <- out
+	}
 }
 
 // Subscribe implements ctl.Handler.
