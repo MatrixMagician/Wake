@@ -8,4 +8,9 @@
 // this one does.
 package loader
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -go-package loader -type wake_exec -type wake_exit -type wake_signal -type wake_oom -type wake_open -type wake_connect -cc clang -target bpfel -output-dir . wake ../../bpf/wake.bpf.c -- -I../../bpf -D__TARGET_ARCH_x86 -O2 -g -Wall
+// The Go structs mirroring the BPF records live in internal/decode, written by
+// hand and pinned to the C sizes by a test, rather than generated here: the
+// decoder must handle records it does *not* recognise, which a generated
+// struct cannot express.
+//
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -go-package loader -cc clang -target bpfel -output-dir . wake ../../bpf/wake.bpf.c -- -I../../bpf -D__TARGET_ARCH_x86 -O2 -g -Wall -Wno-missing-declarations
