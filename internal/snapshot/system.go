@@ -137,7 +137,7 @@ func readMemInfo(path string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read-only: a failed close has nothing to report
 
 	m := make(map[string]string)
 	sc := bufio.NewScanner(f)
@@ -166,7 +166,7 @@ func readPSI(path string) (PSILines, error) {
 	if err != nil {
 		return PSILines{}, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read-only: a failed close has nothing to report
 
 	var out PSILines
 	sc := bufio.NewScanner(f)

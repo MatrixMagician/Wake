@@ -189,7 +189,7 @@ func writeEventsJSONL(fsys FS, path string, events []event.Event) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read-only: a failed close has nothing to report
 
 	zw, err := zstd.NewWriter(f, zstd.WithEncoderLevel(zstd.SpeedDefault))
 	if err != nil {

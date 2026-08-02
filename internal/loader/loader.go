@@ -71,7 +71,11 @@ func Load(opts Options, log *slog.Logger) (*Loader, error) {
 	if err := spec.LoadAndAssign(&l.objs, nil); err != nil {
 		var ve *ebpf.VerifierError
 		if errors.As(err, &ve) {
-			return nil, fmt.Errorf("BPF verifier rejected the programs: %+v", ve)
+			// The verifier log is the whole diagnosis and is unreadable
+			// when truncated, so it is rendered in full with %+v; wrapping
+			// the original keeps errors.As working for callers.
+			return nil, fmt.Errorf("BPF verifier rejected the programs: %w\n\nverifier log:\n%s",
+				err, verifierLog(ve))
 		}
 		return nil, fmt.Errorf("loading BPF objects into the kernel: %w", err)
 	}
@@ -353,6 +357,13 @@ func (l *Loader) detach() {
 		_ = lk.Close()
 	}
 	l.links = nil
+}
+
+// verifierLog renders a verifier error in full. The default %v truncates it,
+// and a truncated verifier log is worthless: the rejected instruction is
+// usually near the end.
+func verifierLog(ve *ebpf.VerifierError) string {
+	return fmt.Sprintf("%+v", ve)
 }
 
 // roundUpPow2 rounds a ring-buffer size up to the power of two the kernel

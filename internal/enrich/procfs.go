@@ -32,7 +32,7 @@ func (s *ProcfsSource) Status(pid int32) (comm string, ppid int32, uid uint32, o
 	if err != nil {
 		return "", 0, 0, false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read-only: a failed close has nothing to report
 
 	sc := bufio.NewScanner(f)
 	var haveName, havePPid, haveUID bool
@@ -73,7 +73,7 @@ func (s *ProcfsSource) Cgroup(pid int32) (path string, ok bool) {
 	if err != nil {
 		return "", false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read-only: a failed close has nothing to report
 
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
@@ -96,7 +96,7 @@ func (s *ProcfsSource) User(uid uint32) (name string, ok bool) {
 	if err != nil {
 		return "", false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read-only: a failed close has nothing to report
 
 	target := strconv.FormatUint(uint64(uid), 10)
 	sc := bufio.NewScanner(f)

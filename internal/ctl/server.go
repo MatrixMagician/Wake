@@ -77,9 +77,11 @@ func (s *Server) Serve(ctx context.Context) error {
 	for {
 		conn, err := s.ln.Accept()
 		if err != nil {
+			// A cancelled context closed the listener from under us; that is
+			// a clean shutdown, not the accept failure it looks like.
 			if ctx.Err() != nil {
 				s.wg.Wait()
-				return nil
+				return nil //nolint:nilerr // deliberate: cancellation is not an error
 			}
 			return fmt.Errorf("accepting a control connection: %w", err)
 		}

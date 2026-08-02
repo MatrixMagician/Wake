@@ -1,0 +1,49 @@
+# golangci-lint configuration.
+#
+# The philosophy here matches the project's: a lint rule earns its place by
+# catching a class of bug that has actually cost someone time. Rules that only
+# generate noise are excluded explicitly, with the reason stated, rather than
+# suppressed one line at a time.
+
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gocritic
+    - misspell
+    - nilerr
+    - revive
+    - unconvert
+    - whitespace
+
+  settings:
+    errcheck:
+      # Terminal output. If writing to a user's stdout fails, there is by
+      # definition nowhere to report it, and the alternative is a nolint
+      # comment on every line of every help message.
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
+    revive:
+      rules:
+        - name: exported
+          disabled: true # doc comments are reviewed by humans, not by a linter
+
+  exclusions:
+    rules:
+      # A deferred Close on a file opened read-only has nothing to report: the
+      # data was already read, and there is no buffered write to fail.
+      - path: (procfs|system|fixture_test|writer_test)\.go
+        linters: [errcheck]
+        source: 'defer f\.Close\(\)'
+      # Test helpers legitimately ignore errors from cleanup paths.
+      - path: _test\.go
+        linters: [errcheck, gosec]
+
+formatters:
+  enable:
+    - gofmt

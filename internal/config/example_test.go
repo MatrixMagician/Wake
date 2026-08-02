@@ -69,41 +69,42 @@ func collectTOMLLeaves(t reflect.Type) []string {
 	var out []string
 	var walk func(t reflect.Type)
 	walk = func(t reflect.Type) {
-		if t.Kind() == reflect.Ptr {
+		if t.Kind() == reflect.Pointer {
 			t = t.Elem()
 		}
 		if t == reflect.TypeOf(time.Duration(0)) {
 			return // handled as a leaf by the caller before recursing in
 		}
-		switch t.Kind() {
-		case reflect.Struct:
-			for i := 0; i < t.NumField(); i++ {
-				f := t.Field(i)
-				tag := f.Tag.Get("toml")
-				if tag == "" || tag == "-" {
-					continue
-				}
-				ft := f.Type
-				if ft.Kind() == reflect.Ptr {
-					ft = ft.Elem()
-				}
-				if ft == reflect.TypeOf(time.Duration(0)) {
+		// Only structs have TOML keys to collect; everything else is a leaf.
+		if t.Kind() != reflect.Struct {
+			return
+		}
+		for i := 0; i < t.NumField(); i++ {
+			f := t.Field(i)
+			tag := f.Tag.Get("toml")
+			if tag == "" || tag == "-" {
+				continue
+			}
+			ft := f.Type
+			if ft.Kind() == reflect.Pointer {
+				ft = ft.Elem()
+			}
+			if ft == reflect.TypeOf(time.Duration(0)) {
+				out = append(out, tag)
+				continue
+			}
+			switch ft.Kind() {
+			case reflect.Struct:
+				walk(ft)
+			case reflect.Slice:
+				elem := ft.Elem()
+				if elem.Kind() == reflect.Struct {
+					walk(elem)
+				} else {
 					out = append(out, tag)
-					continue
 				}
-				switch ft.Kind() {
-				case reflect.Struct:
-					walk(ft)
-				case reflect.Slice:
-					elem := ft.Elem()
-					if elem.Kind() == reflect.Struct {
-						walk(elem)
-					} else {
-						out = append(out, tag)
-					}
-				default:
-					out = append(out, tag)
-				}
+			default:
+				out = append(out, tag)
 			}
 		}
 	}

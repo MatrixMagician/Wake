@@ -33,13 +33,21 @@ test:
 	$(GO) test -race ./...
 
 ## integration: kernel-dependent tests. Requires root and a live BTF kernel.
+## Test binaries are compiled as the invoking user and only *run* under sudo,
+## so that root need not have Go on its PATH.
+INTEGRATION_PKGS := ./internal/loader ./internal/trigger
+
 integration: generate
-	sudo $(GO) test -tags integration -exec sudo -count=1 ./...
+	@set -e; for pkg in $(INTEGRATION_PKGS); do \
+		echo "==> $$pkg"; \
+		$(GO) test -tags integration -c -o /tmp/wake-int.test $$pkg; \
+		sudo /tmp/wake-int.test -test.v -test.count=1; \
+	done
 
 ## lint: vet plus golangci-lint when available.
 lint:
 	$(GO) vet ./...
-	@command -v golangci-lint >/dev/null 2>&1 && golangci-lint run || \
+	@command -v golangci-lint 2>/dev/null || command -v $$HOME/go/bin/golangci-lint >/dev/null 2>&1 && golangci-lint run || \
 		echo "golangci-lint not installed; skipping (make tools)"
 
 fmt:
