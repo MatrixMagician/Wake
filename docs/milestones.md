@@ -5,9 +5,15 @@ the evidence that discharges it, so that a reader can check rather than trust.
 
 Verified on Fedora 44, kernel 7.1.5-201.fc44.x86_64, Go 1.26.
 
-Gates: `go vet` clean, `golangci-lint` clean (0 issues), `go test -race ./...`
-green across 10 packages, `make integration` green as root, `testdata/smoke.sh`
-green end to end.
+Gates, all currently green:
+
+- `go vet` clean.
+- `golangci-lint` clean (0 issues), policy stated in `.golangci.yml`.
+- `go test -race ./...` across 10 packages.
+- `make integration` as root: 18 tests against the live kernel.
+- `testdata/smoke.sh`: full daemon lifecycle end to end.
+- `make perf`: 0.200% CPU and 27.3 MiB RSS at 10k events/s, zero drops.
+- Decoder fuzzing: 59 million executions, no panic, no unserialisable event.
 
 ---
 
