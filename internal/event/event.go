@@ -149,5 +149,5 @@ func (e *Event) Size() int {
 
 // MarshalJSONLine serialises the event as one JSONL line without a trailing
 // newline. `wake watch` and the snapshot writer share this one path so that
-// live output and persisted output can never drift (SPEC.md §9, question 4).
+// live output and persisted output can never drift (SPEC.md §10, question 4).
 func (e *Event) MarshalJSONLine() ([]byte, error) { return json.Marshal(e) }

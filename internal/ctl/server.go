@@ -128,7 +128,7 @@ func (s *Server) handle(ctx context.Context, conn net.Conn) {
 
 // watch streams events until the client goes away. It writes the same JSONL
 // the snapshot contains, through the same encoder, so that live output and
-// persisted output can never drift (SPEC.md §9, question 4).
+// persisted output can never drift (SPEC.md §10, question 4).
 func (s *Server) watch(ctx context.Context, enc *json.Encoder, req Request) {
 	events, cancel := s.h.Subscribe(req.Classes, req.Unit)
 	defer cancel()

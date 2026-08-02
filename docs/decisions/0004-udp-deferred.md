@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Resolves SPEC.md §9 open question 2.
+Accepted. Resolves SPEC.md §10 open question 2.
 
 ## Context
 

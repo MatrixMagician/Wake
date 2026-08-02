@@ -1,3 +1,6 @@
 Name:	smtpd
 State:	R (running)
 Pid:	4321
+PPid:	4300
+Threads:	4
+VmRSS:	   65432 kB

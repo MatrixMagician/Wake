@@ -1,6 +1,6 @@
 # Milestone status
 
-Audit of the implementation against SPEC.md §6. Each criterion is marked with
+Audit of the implementation against SPEC.md §7. Each criterion is marked with
 the evidence that discharges it, so that a reader can check rather than trust.
 
 Verified on Fedora 44, kernel 7.1.5-201.fc44.x86_64, Go 1.26.
@@ -95,6 +95,16 @@ than two.
 | goreleaser static binaries | ✔ `.goreleaser.yaml`; verified with a snapshot build producing static amd64 and arm64 binaries plus RPM and DEB packages. The extracted binary was run: `--version` stamped, `doctor` passed, and it recorded and snapshotted correctly. |
 | CI | ✔ `.github/workflows/ci.yml` (build, unit tests with `-race`, decoder fuzzing, lint, integration on a live kernel, smoke test, informational perf) and `release.yml` (gated on the tests passing) |
 
+## M7 — Consumption contract ✔
+
+| Criterion | Evidence |
+|---|---|
+| SPEC states who the consumer is and what Wake ships | SPEC.md §6.1–6.2; decision recorded in `docs/decisions/0009` |
+| Consumer obligations stated normatively | SPEC.md §6.3 and `docs/snapshot-format.md` §6 — check `schema_version`, ignore dot-prefixed dirs, surface non-zero drops, tolerate the unknown |
+| Compatibility promise stated and enforced | SPEC.md §6.4; `CHANGELOG.md` carries the schema history; the fixture test names a serialisation change as a breaking change rather than a stale fixture. Mutation-verified by bumping `SchemaVersion` and by renaming a JSON tag |
+| Fixture exercises every event class | `testdata/fixtures/reference-snapshot/` — 8 events across all 7 classes including `generic`, plus a non-zero drop count so the drop-surfacing obligation can be exercised |
+| Fixture is regenerable | `make fixture` from `internal/snapshot/mkfixture`; byte-for-byte reproducible, verified by regenerating twice and comparing checksums |
+
 ---
 
 ## Outstanding
@@ -107,4 +117,4 @@ than two.
 
 ## Open questions
 
-All six from SPEC.md §9 are resolved in `docs/decisions/0001`–`0008`.
+All six from SPEC.md §10 are resolved in `docs/decisions/0001`–`0008`.

@@ -8,6 +8,9 @@ for) a `schema_version` they do not recognise.
 This document is written so that a consumer can be implemented from this file
 alone, without reading Wake's source.
 
+**If you are writing a consumer, read §6 first.** It states the four things a
+conforming reader must do; the rest of this document describes the bytes.
+
 ---
 
 ## 1. What a snapshot is
@@ -53,7 +56,7 @@ tells a reader whether that happened (§2.6).
 ## 2. `manifest.json`
 
 The single file a reader should open first. Every field below is always present
-unless marked optional. Example (see §7 for a full worked example):
+unless marked optional. Example (see §8 for a full worked example):
 
 ```json
 {
@@ -267,7 +270,7 @@ means "not known", never "not applicable" — see §3.3.
 | `daddr` | string, optional | Destination address. |
 | `sport` | integer, optional | Source port. |
 | `dport` | integer, optional | Destination port. |
-| `proto` | string, optional | `tcp` (v1 supports TCP connect attempts only — see SPEC.md §2 goal 1 and §9 open question 2 on UDP). |
+| `proto` | string, optional | `tcp` (v1 supports TCP connect attempts only — see SPEC.md §2 goal 1, and `docs/decisions/0004` on why UDP is deferred). |
 | `old_state` | string, optional | The TCP state before this transition, from `inet_sock_set_state` (e.g. `SYN_SENT`). |
 | `new_state` | string, optional | The TCP state after this transition (e.g. `CLOSE`). |
 | `ret` | integer, optional | The connect attempt's result. Negative on failure. See §3.4. |
@@ -321,7 +324,7 @@ there.
   (SPEC.md §2 Non-Goals), not something a config flag can turn back on.
 - **Packet contents.** `connect` events are connection metadata only.
 - **Anything from `proc/fd_listing.txt` beyond fd number and symlink target**
-  (§6.5) — never the contents behind an open fd.
+  (§5.1) — never the contents behind an open fd.
 
 ### 3.7 `generic` events
 
@@ -385,7 +388,7 @@ trigger carried a PID **and** the process still existed when the scrape ran
 (`manifest.proc.found == true`). Every file here is metadata about the process —
 **never the contents of anything the process had open** (CLAUDE.md: "No file
 contents, ever"). This is the strictest privacy line in the whole snapshot format;
-see §6.5 for exactly how the fd listing avoids crossing it.
+see §5.1 for exactly how the fd listing avoids crossing it.
 
 | File | Source | Contents |
 |---|---|---|
@@ -393,7 +396,7 @@ see §6.5 for exactly how the fd listing avoids crossing it.
 | `limits` | `/proc/<pid>/limits`, verbatim | `RLIMIT_*` soft/hard limits. |
 | `cgroup` | `/proc/<pid>/cgroup`, verbatim | The process's cgroup membership line(s). |
 | `cmdline` | `/proc/<pid>/cmdline`, verbatim | The NUL-separated command line as the kernel holds it (**not** re-derived from the `exec` event's `argv`, and **not** subject to the same redaction patterns as `events.jsonl.zst` unless the operator has separately configured proc-scrape redaction — treat this file as sensitive by default). |
-| `fd_listing.txt` | Derived, plain text | See §6.5. |
+| `fd_listing.txt` | Derived, plain text | See §5.1. |
 
 Any of these five files can be legitimately absent even when `found == true`: the
 process can exit between the scrape starting and a given file being read, and a
@@ -421,7 +424,74 @@ had that file open; it tells you nothing about what is in it.
 
 ---
 
-## 6. Versioning policy
+## 6. Consumer obligations
+
+The sections above describe the bytes. This one describes what a **conforming
+consumer** must do with them.
+
+These four requirements appear individually in the prose above; they are
+collected here because each is a case where ignoring the requirement produces a
+confidently wrong answer rather than a visible failure. A parser that gets these
+wrong looks like it works.
+
+### 6.1 Check `schema_version` before trusting anything else
+
+Read `manifest.json` first and compare `schema_version` against the version you
+were written for. A reader built for version *N* must **detect** *N+1* and
+either refuse or degrade explicitly. There is no forward-compatibility promise
+(§7), so proceeding on the assumption that a newer snapshot is close enough is
+how a field that changed meaning becomes a wrong conclusion.
+
+### 6.2 Never read a directory whose name begins with `.`
+
+Wake assembles a snapshot in a hidden staging directory and publishes it with a
+single `rename(2)` (§1). A directory in the snapshots root **without** a leading
+dot is complete and may be read. One **with** a leading dot is a write in
+progress, or a crashed one, and reading it yields a truncated event stream that
+is indistinguishable from a short capture.
+
+### 6.3 Surface non-zero drop counters
+
+Every snapshot manifest carries the full drop report (§2.5): boundary → class →
+count, including zeroes. Wake goes to considerable trouble to count what it
+lost so that the record is honest about its own gaps.
+
+**A consumer that reads those counters and says nothing converts an honest
+partial record into a silent lie.** That is precisely the failure Wake exists to
+prevent, reintroduced one layer up — and the resulting analysis is worse than no
+analysis, because it carries the authority of kernel-level evidence while
+missing part of it.
+
+A consumer is not required to stop, refuse, or degrade. It is required not to be
+quiet: report the counts to whoever reads its output, so that "nothing happened
+in that window" can be told apart from "something happened and we lost it".
+
+Note that `watch_fanout` losses are the exception: they concern a live
+`wake watch` client and have no bearing on the completeness of a snapshot.
+
+### 6.4 Tolerate the unknown
+
+Unrecognised **fields**, **event classes**, **trigger types** and **drop
+boundaries** are forward-compatible extension points, not errors (§7). Ignore
+what you do not recognise rather than failing.
+
+In particular, retain events with `class: "generic"`. Wake emits those for
+records whose layout its own decoder did not recognise, keeping the raw payload
+rather than discarding it. A consumer that drops them re-creates the silent loss
+that the generic class exists to prevent, and does so at exactly the moment the
+kernel is producing something unexpected — which is when an operator most needs
+to know.
+
+### 6.5 What Wake does not require
+
+For the avoidance of doubt, a consumer is free to ignore any part of a snapshot
+it has no use for. Reading only `events.jsonl.zst` and never `system.json`,
+or filtering to a single class, conforms. The obligations above concern
+correctness and honesty, not completeness of use.
+
+---
+
+## 7. Versioning policy
 
 - `manifest.schema_version` governs the entire snapshot — every file within it,
   not just `events.jsonl.zst`.
@@ -441,68 +511,111 @@ had that file open; it tells you nothing about what is in it.
 
 ---
 
-## 7. Worked example
+## 8. Worked example
 
-A complete, minimal, hand-checkable snapshot with this shape is committed at
-`testdata/fixtures/reference-snapshot/` for exactly this purpose — decompress
-`events.jsonl.zst` with any zstd tool and read every file directly. Below is the
-same snapshot's `manifest.json` reproduced inline as a quick-reference example (see
-the fixture's own `README.md` for the full byte-for-byte contents and the schema
-test that validates it, `internal/snapshot/fixture_test.go`).
+A complete, hand-checkable snapshot is committed at
+`testdata/fixtures/reference-snapshot/` for exactly this purpose. It contains
+**one event of every class**, including `generic`, and reports a non-zero drop
+count — so a consumer that reads it correctly has handled every shape Wake
+emits, including the two most commonly got wrong.
+
+Decompress `events.jsonl.zst` with any zstd tool and read every file directly:
+
+```bash
+zstdcat testdata/fixtures/reference-snapshot/events.jsonl.zst | jq -c '{ts, class, comm}'
+```
+
+Below is that fixture's `manifest.json` verbatim. It is reproduced here for
+quick reference; the file itself is authoritative, and
+`internal/snapshot/fixture_test.go` validates it against the live types on every
+test run.
 
 ```json
 {
   "schema_version": 1,
   "id": "20260802T142006Z-watched-process",
-  "wake_version": "v0.9.2-fixture",
-  "generated_at": "2026-08-02T14:20:07.5Z",
+  "wake_version": "v0.0.0-fixture",
+  "generated_at": "2026-08-02T14:20:07.512Z",
   "trigger": {
     "type": "watched-process",
-    "reason": "exit code 137",
+    "reason": "smtpd (pid 4321) was killed by SIGKILL",
     "rule": "mstr-crash",
     "pid": 4321,
     "unit": "mstr.service",
     "fired_at": "2026-08-02T14:20:06.998Z"
   },
   "host": {
-    "hostname": "fixture-host",
-    "kernel_release": "6.10.0-fixture",
+    "hostname": "mstr-prod-07",
+    "kernel_release": "6.10.0-1.fc42.x86_64",
     "machine": "x86_64"
   },
   "capture_window": {
-    "first_event_ts": "2026-08-02T14:20:04.1Z",
+    "first_event_ts": "2026-08-02T14:20:01Z",
     "last_event_ts": "2026-08-02T14:20:06.998Z"
   },
-  "event_count": 3,
+  "event_count": 8,
   "event_counts": {
-    "connect": 0, "exec": 1, "exit": 1, "generic": 0, "oom": 0, "open": 1, "signal": 0
+    "connect": 1,
+    "exec": 2,
+    "exit": 1,
+    "generic": 1,
+    "oom": 1,
+    "open": 1,
+    "signal": 1
   },
   "drops": {
-    "kernel_ringbuf": {"connect": 0, "exec": 0, "exit": 0, "generic": 0, "oom": 0, "open": 0, "signal": 0},
-    "decode":         {"connect": 0, "exec": 0, "exit": 0, "generic": 0, "oom": 0, "open": 0, "signal": 0},
-    "userspace_ring": {"connect": 0, "exec": 0, "exit": 0, "generic": 0, "oom": 0, "open": 0, "signal": 0},
-    "watch_fanout":   {"connect": 0, "exec": 0, "exit": 0, "generic": 0, "oom": 0, "open": 0, "signal": 0}
+    "decode": {
+      "connect": 0,
+      "exec": 0,
+      "exit": 0,
+      "generic": 0,
+      "oom": 0,
+      "open": 0,
+      "signal": 0
+    },
+    "kernel_ringbuf": {
+      "connect": 0,
+      "exec": 0,
+      "exit": 0,
+      "generic": 0,
+      "oom": 0,
+      "open": 0,
+      "signal": 0
+    },
+    "userspace_ring": {
+      "connect": 0,
+      "exec": 0,
+      "exit": 0,
+      "generic": 0,
+      "oom": 0,
+      "open": 12,
+      "signal": 0
+    },
+    "watch_fanout": {
+      "connect": 0,
+      "exec": 0,
+      "exit": 0,
+      "generic": 0,
+      "oom": 0,
+      "open": 0,
+      "signal": 0
+    }
   },
-  "config_hash": "fixture0000000000000000000000000000000000000000000000000000000",
+  "config_hash": "fixture000000000000000000000000000000000000000000000000000000000",
   "proc": {
     "pid": 4321,
     "found": true,
-    "files": ["cgroup", "cmdline", "limits", "status", "fd_listing.txt"]
+    "files": [
+      "cgroup",
+      "cmdline",
+      "limits",
+      "status",
+      "fd_listing.txt"
+    ]
   }
 }
 ```
 
-The corresponding `events.jsonl.zst` decompresses to three lines, oldest first:
-
-```json
-{"ts":"2026-08-02T14:20:04.1Z","class":"exec","pid":4321,"uid":1000,"comm":"smtpd","cgroup":"/system.slice/mstr.service","unit":"mstr.service","filename":"/usr/sbin/smtpd","argv":["smtpd","-d"]}
-{"ts":"2026-08-02T14:20:05.25Z","class":"open","pid":4321,"uid":1000,"comm":"smtpd","cgroup":"/system.slice/mstr.service","unit":"mstr.service","path":"/etc/ssl/certs/mstr.pem","flags":"O_RDONLY","ret":-13,"errno":"EACCES"}
-{"ts":"2026-08-02T14:20:06.998Z","class":"exit","pid":4321,"uid":1000,"comm":"smtpd","cgroup":"/system.slice/mstr.service","unit":"mstr.service","exit_signal":9}
-```
-
-`system.json` and `proc/*` follow the shapes in §4 and §5 respectively; see the
-fixture directory for exact byte-for-byte contents. Note that Go's JSON time
-encoding trims trailing zero fractional digits (`.5Z` rather than `.500000000Z`,
-`.1Z` rather than `.100000000Z`) — a reader's RFC 3339 parser must accept any
-number of fractional-second digits, from none up to nanosecond precision, per
-RFC 3339 §5.6.
+Note `drops.userspace_ring.open` above: this snapshot is **missing 12 open
+events**. A conforming consumer says so (§6.3) rather than presenting the
+timeline as complete.

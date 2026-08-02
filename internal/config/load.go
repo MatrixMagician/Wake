@@ -12,7 +12,7 @@ import (
 
 // Load builds the effective configuration for path: defaults, then the TOML
 // file at path (if it exists — a missing file is not an error, since a
-// zero-config `wake run` must work per SPEC.md §8), then WAKE_* environment
+// zero-config `wake run` must work per SPEC.md §9), then WAKE_* environment
 // overrides. It does not apply CLI flags: callers assign those directly onto
 // the returned Config's fields afterwards, then call Validate again
 // (CLAUDE.md, "Config precedence").

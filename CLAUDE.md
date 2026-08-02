@@ -11,7 +11,7 @@ into a **bounded in-memory ring**, writes nothing in steady state, and persists 
 self-contained **snapshot** of the last N minutes only when a trigger fires.
 
 **SPEC.md is the authoritative specification.** Read the relevant section before
-implementing anything. Milestones and their acceptance criteria are SPEC.md §6; the
+implementing anything. Milestones and their acceptance criteria are SPEC.md §7; the
 repository layout is §7. Snapshots are a versioned public contract read by
 downstream tooling — changing the schema is a breaking change.
 
@@ -26,11 +26,12 @@ make test               # unit tests, unprivileged, -race
 make integration        # //go:build integration, requires root + live kernel
 make lint               # go vet + golangci-lint
 make perf               # load generator + overhead measurement -> docs/perf.md
+make fixture            # regenerate the reference snapshot consumers test against
 sudo ./wake doctor      # BTF / tracepoints / caps / ringbuf preflight
 ```
 
 "Done" for a milestone = `make lint test` clean, its integration tests pass as root,
-and the acceptance bullets in SPEC.md §6 are demonstrably met. Do not start M(n+1)
+and the acceptance bullets in SPEC.md §7 are demonstrably met. Do not start M(n+1)
 while M(n) is red.
 
 ## Architecture
@@ -83,7 +84,7 @@ BPF (tracepoints + in-kernel filters) --ringbuf--> reader -> decode -> bounded r
 - Config precedence: CLI flags > `WAKE_*` env > `/etc/wake/wake.toml` > defaults.
   The `[classes]` table *merges* with the defaults rather than replacing them, so
   omitting a class leaves it enabled; disabling one requires saying `false`.
-- Record decisions for SPEC.md §9 open questions in `docs/decisions/NNNN-title.md`.
+- Record decisions for SPEC.md §10 open questions in `docs/decisions/NNNN-title.md`.
 - Licence: Apache-2.0. Commit per logical change, imperative subject line.
 
 ## Working with jcode

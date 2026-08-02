@@ -182,7 +182,7 @@ func (w *Writer) Write(in Input) (Result, error) {
 
 // writeEventsJSONL streams events, oldest first, as zstd-compressed JSONL to
 // path, returning the number of events written. It shares
-// event.Event.MarshalJSONLine with `wake watch` (SPEC.md §9 question 4) so
+// event.Event.MarshalJSONLine with `wake watch` (SPEC.md §10 question 4) so
 // live output and persisted output can never drift.
 func writeEventsJSONL(fsys FS, path string, events []event.Event) (int, error) {
 	f, err := fsys.CreateFile(path, 0o600)

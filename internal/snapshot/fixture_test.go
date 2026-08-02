@@ -50,11 +50,27 @@ func TestReferenceSnapshot_ManifestSchema(t *testing.T) {
 	// Round-trip: re-marshalling and re-parsing must be lossless for the
 	// fields this package owns (catches accidental field renames that
 	// happen to still unmarshal due to Go's permissive JSON decoding).
+	// The wording here is deliberate. Telling a developer that a fixture is
+	// "stale" invites them to regenerate it and carry on, which is exactly how
+	// a breaking change to a public contract ships unnoticed. The fixture is
+	// the tripwire; regenerating it is how you disarm the tripwire, not how you
+	// fix the fault.
 	if m.SchemaVersion != event.SchemaVersion {
-		t.Errorf("SchemaVersion = %d, want event.SchemaVersion = %d (fixture is stale — regenerate it)",
-			m.SchemaVersion, event.SchemaVersion)
+		t.Errorf(`the fixture's schema_version (%d) no longer matches `+
+			`event.SchemaVersion (%d).
+
+This is a BREAKING CHANGE to a public contract (SPEC.md §6.4). Before you
+regenerate the fixture, decide which of these happened:
+
+  1. You deliberately bumped event.SchemaVersion. Then: regenerate with
+     'make fixture' AND add an entry to CHANGELOG.md's schema history.
+  2. You changed the serialised form without meaning to. Then: revert it.
+     Consumers are written against version %d and will misread the new shape.
+
+Regenerating without doing (1) or (2) silently breaks every reader.`,
+			m.SchemaVersion, event.SchemaVersion, m.SchemaVersion)
 	}
-	if m.ID != "20260802T142006Z-watched-process" {
+	if m.ID != "reference-snapshot" && m.ID != "20260802T142006Z-watched-process" {
 		t.Errorf("ID = %q", m.ID)
 	}
 	if m.Trigger.Type != "watched-process" {
@@ -66,14 +82,22 @@ func TestReferenceSnapshot_ManifestSchema(t *testing.T) {
 	if m.Trigger.Unit != "mstr.service" {
 		t.Errorf("Trigger.Unit = %q, want mstr.service", m.Trigger.Unit)
 	}
-	if m.Host.Hostname != "fixture-host" {
-		t.Errorf("Host.Hostname = %q, want fixture-host", m.Host.Hostname)
+	if m.Host.Hostname != "mstr-prod-07" {
+		t.Errorf("Host.Hostname = %q, want mstr-prod-07", m.Host.Hostname)
 	}
 	if m.Host.Machine != "x86_64" {
 		t.Errorf("Host.Machine = %q, want x86_64", m.Host.Machine)
 	}
-	if m.EventCount != 3 {
-		t.Errorf("EventCount = %d, want 3", m.EventCount)
+	if m.EventCount != 8 {
+		t.Errorf("EventCount = %d, want 8", m.EventCount)
+	}
+	// The fixture reports a real loss on purpose. An all-zero drop report
+	// would let a consumer satisfy the "surface non-zero drops" obligation
+	// (docs/snapshot-format.md §6.3) by accident, having never seen a
+	// snapshot that admits to losing anything.
+	if m.Drops["userspace_ring"]["open"] == 0 {
+		t.Error("the fixture's drop report is all zeroes; a consumer could not " +
+			"exercise the drop-surfacing obligation against it")
 	}
 	if m.Window.First == nil || m.Window.Last == nil {
 		t.Fatal("Window.First/Last must both be set for a non-empty snapshot")
@@ -149,24 +173,38 @@ func TestReferenceSnapshot_EventsSchema(t *testing.T) {
 		events = append(events, e)
 	}
 
-	if len(events) != 3 {
-		t.Fatalf("got %d events, want 3", len(events))
+	// The fixture must exercise *every* class, because it is the only
+	// executable artefact a consumer gets (SPEC.md §6.2). A fixture missing a
+	// class lets a consumer pass its own tests and then fail on the first real
+	// snapshot containing one — and `generic` in particular is both the most
+	// likely to be omitted and the most likely to break a naive reader.
+	present := map[event.Class]bool{}
+	for _, e := range events {
+		present[e.Class] = true
+	}
+	for _, c := range event.Classes {
+		if !present[c] {
+			t.Errorf("the reference fixture contains no %q event; a consumer "+
+				"testing against it would never exercise that class", c)
+		}
 	}
 
-	wantClasses := []event.Class{event.ClassExec, event.ClassOpen, event.ClassExit}
-	for i, c := range wantClasses {
-		if events[i].Class != c {
-			t.Errorf("events[%d].Class = %q, want %q", i, events[i].Class, c)
-		}
-		if !events[i].Class.Valid() {
-			t.Errorf("events[%d].Class = %q is not a valid event.Class", i, events[i].Class)
-		}
+	if len(events) < len(event.Classes) {
+		t.Fatalf("got %d events for %d classes", len(events), len(event.Classes))
 	}
 
+	// Ordering is a documented guarantee consumers may rely on
+	// (docs/snapshot-format.md §3), so the fixture must demonstrate it.
 	for i := 1; i < len(events); i++ {
 		if events[i].Timestamp.Before(events[i-1].Timestamp) {
-			t.Errorf("events not sorted oldest-first at index %d: %v before %v",
-				i, events[i].Timestamp, events[i-1].Timestamp)
+			t.Errorf("events[%d] is older than events[%d]; the fixture violates "+
+				"the oldest-first ordering guarantee", i, i-1)
+		}
+	}
+
+	for i, e := range events {
+		if !e.Class.Valid() {
+			t.Errorf("events[%d].Class = %q is not a valid event.Class", i, e.Class)
 		}
 	}
 
@@ -177,8 +215,8 @@ func TestReferenceSnapshot_EventsSchema(t *testing.T) {
 	if execEvent.Filename != "/usr/sbin/smtpd" {
 		t.Errorf("exec event Filename = %q, want /usr/sbin/smtpd", execEvent.Filename)
 	}
-	if len(execEvent.Argv) != 2 || execEvent.Argv[0] != "smtpd" || execEvent.Argv[1] != "-d" {
-		t.Errorf("exec event Argv = %v, want [smtpd -d]", execEvent.Argv)
+	if len(execEvent.Argv) < 2 || execEvent.Argv[0] != "smtpd" || execEvent.Argv[1] != "-d" {
+		t.Errorf("exec event Argv = %v, want it to start [smtpd -d]", execEvent.Argv)
 	}
 
 	openEvent := events[1]
@@ -189,9 +227,34 @@ func TestReferenceSnapshot_EventsSchema(t *testing.T) {
 		t.Errorf("open event Ret = %v, want -13", openEvent.Ret)
 	}
 
-	exitEvent := events[2]
+	// The exit that fired the trigger is the last event, since it is what
+	// froze the ring.
+	exitEvent := events[len(events)-1]
+	if exitEvent.Class != event.ClassExit {
+		t.Fatalf("last event is %q, want the exit that fired the trigger", exitEvent.Class)
+	}
 	if exitEvent.ExitSignal == nil || *exitEvent.ExitSignal != 9 {
 		t.Errorf("exit event ExitSignal = %v, want 9", exitEvent.ExitSignal)
+	}
+
+	// The generic event is the one a naive consumer is most likely to
+	// mishandle, so the fixture must carry a fully-formed one.
+	var generic *event.Event
+	for i := range events {
+		if events[i].Class == event.ClassGeneric {
+			generic = &events[i]
+			break
+		}
+	}
+	if generic == nil {
+		t.Fatal("no generic event in the fixture")
+	}
+	if len(generic.Raw) == 0 {
+		t.Error("the generic event carries no raw payload; retaining it is the " +
+			"entire point of the class")
+	}
+	if generic.DecodeError == "" {
+		t.Error("the generic event does not explain why it could not be decoded")
 	}
 }
 
@@ -215,17 +278,19 @@ func TestReferenceSnapshot_SystemJSONSchema(t *testing.T) {
 	if sys.Uname.Sysname != "Linux" {
 		t.Errorf("Uname.Sysname = %q, want Linux", sys.Uname.Sysname)
 	}
-	if sys.MemInfo["MemTotal"] != "16384000 kB" {
-		t.Errorf("MemInfo[MemTotal] = %q", sys.MemInfo["MemTotal"])
+	// Values come from the generator and may change; the conventions a
+	// consumer depends on must not.
+	if !strings.HasSuffix(sys.MemInfo["MemTotal"], " kB") {
+		t.Errorf("MemInfo[MemTotal] = %q; meminfo values are captured verbatim, "+
+			"including the kernel's unit suffix", sys.MemInfo["MemTotal"])
 	}
 	if _, ok := sys.Pressure["io"]; ok {
-		t.Error(`Pressure["io"] present, want absent (fixture demonstrates the "resource absent" convention)`)
+		t.Error(`Pressure["io"] present, want absent (the fixture demonstrates ` +
+			`the "resource absent" convention for PSI files that do not exist)`)
 	}
-	if sys.Pressure["cpu"].Full != nil {
-		t.Errorf("Pressure[cpu].Full = %+v, want nil (CPU has no full line)", sys.Pressure["cpu"].Full)
-	}
-	if sys.Pressure["memory"].Some["avg10"] != "0.50" {
-		t.Errorf("Pressure[memory].Some[avg10] = %q, want 0.50", sys.Pressure["memory"].Some["avg10"])
+	if len(sys.Pressure["memory"].Some) == 0 {
+		t.Error("Pressure[memory].Some is empty; the fixture should show a " +
+			"populated PSI reading so a consumer sees the shape")
 	}
 }
 

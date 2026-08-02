@@ -10,7 +10,7 @@ PKG     := github.com/MatrixMagician/wake
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X $(PKG)/internal/version.Version=$(VERSION)
 
-.PHONY: all build generate test integration smoke lint fmt perf clean tools
+.PHONY: all build generate test integration smoke lint fmt perf fixture clean tools
 
 all: build
 
@@ -43,6 +43,14 @@ integration: generate
 		$(GO) test -tags integration -c -o /tmp/wake-int.test $$pkg; \
 		sudo /tmp/wake-int.test -test.v -test.count=1; \
 	done
+
+## fixture: regenerate the reference snapshot consumers test against.
+##
+## This is NOT the remedy for a failing schema test — see CHANGELOG.md,
+## "Before you bump it". Run it after a deliberate, recorded schema change.
+fixture:
+	$(GO) run ./internal/snapshot/mkfixture -out testdata/fixtures
+	@echo "Regenerated. If schema_version changed, add a CHANGELOG.md entry."
 
 ## lint: vet plus golangci-lint when available.
 lint:

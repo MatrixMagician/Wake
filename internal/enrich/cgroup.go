@@ -16,7 +16,7 @@ var hex64 = regexp.MustCompile(`^[0-9a-f]{64}$`)
 // systemd sees it: the runtime asks systemd (or writes cgroupfs directly) to
 // create a scope named after the container, so the ID is recoverable from
 // the path alone with no kubelet/podman/docker API call — required by
-// SPEC.md §9 q5.
+// SPEC.md §10 q5.
 var (
 	libpodScope        = regexp.MustCompile(`^libpod-([0-9a-f]{64})\.scope$`)
 	dockerScope        = regexp.MustCompile(`^docker-([0-9a-f]{64})\.scope$`)
@@ -35,7 +35,7 @@ var (
 // It never guesses: unrecognised or malformed input degrades to two empty
 // strings rather than a best-effort partial match. This is a hard rule, not
 // a convenience — a support engineer trusting a wrong attribution is worse
-// off than one told plainly "unknown" (SPEC.md §9 q5: parse IDs from the
+// off than one told plainly "unknown" (SPEC.md §10 q5: parse IDs from the
 // cgroup path only, never call a kubelet/runtime API to compensate for a
 // path this function cannot read).
 func ParseCgroup(path string) (unit, container string) {

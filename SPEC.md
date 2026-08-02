@@ -114,7 +114,85 @@ wake verify-config <file>                    # parse + semantic checks, exit-cod
 
 ---
 
-## 6. Milestones and Acceptance Criteria
+## 6. Consuming a Snapshot
+
+A snapshot is the product. Everything else in this document exists to make one
+trustworthy, so the terms on which it is read are part of the specification
+rather than an afterthought.
+
+### 6.1 Who the consumer is
+
+**A separate program, in any language, reading bytes off disk.** Not a Go
+program importing Wake: every package stays under `internal/`, deliberately, so
+that the contract is the serialised form and not a type signature. A consumer
+written in Python, Rust or awk is as first-class as one written in Go, and no
+internal refactor can break any of them.
+
+A human at a terminal with `zstdcat` and `jq` is explicitly supported and costs
+nothing extra — that is a property of choosing JSONL, not a second interface.
+
+### 6.2 What Wake ships
+
+The deliverable is **the documentation and the reference fixture**, and nothing
+else:
+
+- `docs/snapshot-format.md` — the field-by-field contract, written to be
+  implementable without reading Wake's source.
+- `testdata/fixtures/reference-snapshot/` — a small, deterministic snapshot
+  exercising **every event class**, so a consumer's test suite has something
+  stable to read without a daemon, root or a kernel.
+
+Wake ships **no export subcommand and no client library**. Both were considered
+and rejected: zstd and JSONL are universally available, so an export verb would
+mostly duplicate `zstdcat` while tempting consumers into shelling out to Wake,
+coupling their pipeline to a CLI they do not control. A machine-readable schema
+is a deferral rather than a refusal (`docs/decisions/0009`).
+
+### 6.3 Consumer obligations
+
+A **conforming consumer** must do the following. These are not style
+preferences: each one is a case where ignoring it produces confidently wrong
+answers rather than a visible failure.
+
+1. **Check `manifest.schema_version` before trusting anything else.** A reader
+   built for version *N* must detect *N+1* and refuse or degrade, not guess.
+2. **Ignore directories whose name begins with `.`** — those are writes in
+   progress. A snapshot published under a visible name is complete; one that is
+   not is not yet a snapshot.
+3. **Surface non-zero drop counters.** Wake counts every event it lost, at every
+   boundary, and puts the full report in each manifest. A consumer that discards
+   those counters turns an honest partial record into a silent lie, which is the
+   exact failure this project exists to prevent, reintroduced one layer up. A
+   consumer need not stop; it must not stay quiet.
+4. **Tolerate the unknown.** Unrecognised fields, event classes, trigger types
+   and drop boundaries are forward-compatible extension points, not errors.
+   Retain the `generic` class rather than discarding it — Wake kept that record
+   precisely because it could not decode it.
+
+Wake cannot enforce any of this. It states it so that "conforming" has a
+meaning, and so that a consumer author knows which shortcuts cost their users
+the truth.
+
+### 6.4 The compatibility promise
+
+- `manifest.schema_version` governs the whole snapshot, every file within it.
+- **Additive changes do not bump it**: a new optional field, event class,
+  trigger type or drop boundary. Obligation 4 exists so these are safe.
+- **Anything a existing reader could misinterpret does bump it**: a field
+  changing type or meaning, a field being removed, an ordering guarantee being
+  relaxed, a privacy boundary moving. Such a change is recorded in
+  `CHANGELOG.md`.
+- There is no forward-compatibility promise. A reader built for *N* is
+  guaranteed only that it can *detect* *N+1*, not understand it.
+
+This promise is held up mechanically, not by good intentions: the reference
+fixture is validated against the live types on every test run, and a change that
+alters the serialised form fails that test with an instruction to bump the
+version and record the change — never to quietly regenerate the fixture.
+
+---
+
+## 7. Milestones and Acceptance Criteria
 
 Each milestone lands with tests, `go vet`, `golangci-lint`, and `-race` clean. BPF-dependent integration tests are build-tagged (`//go:build integration`) and run as root against the live kernel in a documented `make integration` path; unit tests use an injected fake event source and never require privileges.
 
@@ -136,9 +214,12 @@ Each milestone lands with tests, `go vet`, `golangci-lint`, and `-race` clean. B
 **M6 — Hardening + packaging + release**
 ✔ Hardened systemd unit ships and daemon runs under it (integration-verified — sandboxing options and BPF interact non-obviously; document what had to be loosened and why); `doctor` detects and explains the known failure modes (missing caps, locked-down `kernel.unprivileged_bpf_disabled` irrelevance under caps, SELinux denials hint); goreleaser static binaries; README with a worked incident walkthrough: break a service, watch Wake catch it, read the snapshot it produced.
 
+**M7 — Consumption contract**
+✔ SPEC §6 states who the consumer is, what Wake ships, the four consumer obligations, and the compatibility promise; `docs/snapshot-format.md` gains a normative *Consumer obligations* section collecting requirements previously scattered through its prose; `CHANGELOG.md` exists and records the v1 schema; the reference fixture exercises **all seven event classes** including `generic`, is regenerable via `make fixture` from a committed generator, and its schema test fails a serialisation change with an instruction to bump `event.SchemaVersion` and record it — never to regenerate the fixture. Verified by mutating a JSON field tag and confirming the test names it as a breaking change.
+
 ---
 
-## 7. Repository Layout
+## 8. Repository Layout
 
 ```
 wake/
@@ -162,7 +243,7 @@ wake/
 
 ---
 
-## 8. Guidance for the Implementing Agent
+## 9. Guidance for the Implementing Agent
 
 - **Verify every tracepoint layout against the running kernel** (`/sys/kernel/tracing/events/…/format` and BTF) before writing decode code; cite what was consulted in a provenance comment. Tracepoint fields are stable-ish, not identical across versions — do not code from folklore or training-data memory.
 - Drop accounting is load-bearing: a flight recorder that silently loses events is worse than none. Every buffer boundary (BPF ringbuf, userspace ring, watch fan-out) has a counter, and counters appear in `status` and every manifest.
@@ -171,7 +252,7 @@ wake/
 - Keep the BPF C minimal and boring — filtering and truncation in kernel, everything else in Go. Complexity lives where it can be unit-tested.
 - British English in docs and user-facing strings.
 
-## 9. Open Questions (record decisions in `docs/decisions/`)
+## 10. Open Questions (record decisions in `docs/decisions/`)
 
 1. `inet_sock_set_state` tracepoint vs `tcp_connect`/`tcp_v4_connect` kprobes for capturing connect *attempts with errno* — verify what the tracepoint actually yields for failed connects during M3 spike.
 2. Whether UDP "connects" (sendto to new destinations) are worth a v1 class or deferred (leaning: defer).

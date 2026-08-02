@@ -1,44 +1,38 @@
 {
-  "captured_at": "2026-08-02T14:20:07.5Z",
+  "captured_at": "2026-08-02T14:20:07.498Z",
   "uname": {
     "sysname": "Linux",
-    "nodename": "fixture-host",
-    "release": "6.10.0-fixture",
-    "version": "#1 SMP fixture",
+    "nodename": "mstr-prod-07",
+    "release": "6.10.0-1.fc42.x86_64",
+    "version": "#1 SMP PREEMPT_DYNAMIC Fri Jul 18 12:00:00 UTC 2026",
     "machine": "x86_64"
   },
   "meminfo": {
-    "MemFree": "2048000 kB",
-    "MemTotal": "16384000 kB"
+    "MemAvailable": "412300 kB",
+    "MemTotal": "16065536 kB",
+    "SwapFree": "0 kB",
+    "SwapTotal": "8388604 kB"
   },
   "pressure": {
-    "cpu": {
-      "some": {
-        "avg10": "1.20",
-        "avg300": "0.30",
-        "avg60": "0.80",
-        "total": "99999"
-      }
-    },
     "memory": {
       "some": {
-        "avg10": "0.50",
-        "avg300": "0.10",
-        "avg60": "0.20",
-        "total": "12345"
+        "avg10": "42.11",
+        "avg300": "12.55",
+        "avg60": "38.02",
+        "total": "8123456"
       },
       "full": {
-        "avg10": "0.10",
-        "avg300": "0.01",
-        "avg60": "0.05",
-        "total": "6789"
+        "avg10": "21.00",
+        "avg300": "6.10",
+        "avg60": "18.44",
+        "total": "4011223"
       }
     }
   },
-  "uptime_seconds": 123456.78,
+  "uptime_seconds": 864123.45,
   "loadavg": [
-    0.1,
-    0.2,
-    0.3
+    8.14,
+    6.02,
+    3.77
   ]
 }

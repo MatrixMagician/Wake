@@ -155,7 +155,7 @@ type Snapshot struct {
 	RetentionBytes int64 `toml:"retention_bytes"`
 
 	// OnShutdown, if true, takes an implicit snapshot when the daemon stops
-	// cleanly (SPEC.md §9 q6: opt-in, defaults to false).
+	// cleanly (SPEC.md §10 q6: opt-in, defaults to false).
 	OnShutdown bool `toml:"on_shutdown"`
 }
 
@@ -194,7 +194,7 @@ type RedactionRule struct {
 // zero-config `wake run` works safely on a typical host (no scope
 // restriction, all classes enabled, a five-minute/200k-event/128 MiB ring,
 // snapshots under /var/lib/wake/snapshots, default redaction rules on,
-// snapshot-on-shutdown off per SPEC.md §9 q6).
+// snapshot-on-shutdown off per SPEC.md §10 q6).
 func Default() *Config {
 	return &Config{
 		Scope: Scope{},

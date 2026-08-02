@@ -4,8 +4,8 @@
 
 - `CONTEXT.md` (repo root) — the ubiquitous language: what an *event*, *ring*, *trigger*,
   *snapshot*, *scope*, and *enrichment* mean here. Read it before naming anything new.
-- `docs/decisions/NNNN-title.md` — architecture decision records. SPEC.md §9 lists the
-  open questions that must end up here; any kprobe use requires one (SPEC.md §8).
+- `docs/decisions/NNNN-title.md` — architecture decision records. SPEC.md §10 lists the
+  open questions that must end up here; any kprobe use requires one (SPEC.md §9).
 
 Consumer rules:
 - Before implementing, read `SPEC.md` (authoritative) then `CONTEXT.md` (vocabulary).
