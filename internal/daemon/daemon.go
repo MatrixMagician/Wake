@@ -89,6 +89,8 @@ func New(cfg *config.Config, socketPath string, log *slog.Logger) (*Daemon, erro
 		startedAt: time.Now(),
 	}
 
+	applyMemoryLimit(cfg.Ring.MemoryBudgetBytes, log)
+
 	srv, err := ctl.Listen(socketPath, d, log)
 	if err != nil {
 		return nil, err
