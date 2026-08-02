@@ -124,10 +124,22 @@ None of that was in the application's log.
 
 **5. Feed it to Sift.** Snapshots are a versioned public contract designed as a
 first-class input for [Sift](https://github.com/MatrixMagician/Sift), the
-companion triage engine. The format is documented in
-`docs/snapshot-format.md` to a standard that an adapter can be written from the
-document alone, and a reference fixture snapshot ships in `testdata/` for
-Sift's test suite.
+companion triage engine, which has a `wake` adapter:
+
+```bash
+sift new --case incident-4471
+cp -r /var/lib/wake/snapshots/20260802-* cases/incident-4471/input/
+sift ingest cases/incident-4471
+sift analyze cases/incident-4471
+```
+
+The adapter carries Wake's drop counters through as an explicit warning, so an
+incomplete capture cannot be silently reasoned over.
+
+The format is documented in `docs/snapshot-format.md` to a standard that an
+adapter can be written from the document alone — and that adapter was, without
+reading this repository's source. A reference fixture snapshot ships in
+`testdata/` for Sift's test suite.
 
 ## Guarantees
 
