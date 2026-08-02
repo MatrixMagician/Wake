@@ -1,0 +1,121 @@
+# goreleaser configuration for Wake.
+#
+# The BPF objects are compiled by `make generate` and embedded via go:embed
+# before goreleaser runs, so the released binary is genuinely self-contained:
+# no clang, no kernel headers, no libbpf on the target. That is the whole point
+# of SPEC.md §2 goal 8, and the `before` hook below is what enforces it.
+#
+# Linux only, and deliberately so: Wake loads eBPF programs.
+
+version: 2
+
+project_name: wake
+
+before:
+  hooks:
+    # Regenerate the BPF objects from source. If this is skipped, the release
+    # would embed whatever happened to be in the working tree.
+    - make generate
+    - go mod tidy
+
+builds:
+  - id: wake
+    main: ./cmd/wake
+    binary: wake
+    env:
+      # Static: the binary must run on a minimal image, and on the machine of
+      # whoever is having the bad day.
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/MatrixMagician/wake/internal/version.Version={{.Version}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: wake
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+      - SPEC.md
+      - docs/snapshot-format.md
+      - docs/perf.md
+      # Listed individually with explicit destinations: a bare `dst: deploy/`
+      # for both makes goreleaser treat the second as a duplicate and silently
+      # drop it, which would ship a release with no example configuration.
+      - src: deploy/wake.service
+        dst: deploy/wake.service
+      - src: deploy/wake.example.toml
+        dst: deploy/wake.example.toml
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  prerelease: auto
+  header: |
+    ## Wake {{ .Version }}
+
+    A single static binary. It needs a Linux kernel ≥ 5.8 with BTF and either
+    root or `CAP_BPF`+`CAP_PERFMON`+`CAP_SYS_RESOURCE`.
+
+    Run `wake doctor` first: it is exit-code gated and every failure names its
+    remedy.
+  footer: |
+    ### Install
+
+    ```bash
+    sudo install -m 0755 wake /usr/bin/wake
+    sudo install -Dm 0644 deploy/wake.service /etc/systemd/system/wake.service
+    sudo install -Dm 0600 deploy/wake.example.toml /etc/wake/wake.toml
+    sudo wake verify-config /etc/wake/wake.toml
+    sudo systemctl enable --now wake
+    ```
+
+    Snapshot schema version and format: see `docs/snapshot-format.md`.
+
+nfpms:
+  - id: wake
+    package_name: wake
+    vendor: MatrixMagician
+    homepage: https://github.com/MatrixMagician/Wake
+    maintainer: MatrixMagician
+    description: |-
+      eBPF incident flight recorder.
+      Records kernel-level events to a bounded in-memory ring and persists a
+      snapshot only when a trigger fires.
+    license: Apache-2.0
+    formats:
+      - rpm
+      - deb
+    bindir: /usr/bin
+    contents:
+      - src: deploy/wake.service
+        dst: /usr/lib/systemd/system/wake.service
+      - src: deploy/wake.example.toml
+        dst: /etc/wake/wake.toml
+        type: config|noreplace
+        file_info:
+          mode: 0600
+      - dst: /var/lib/wake/snapshots
+        type: dir
+        file_info:
+          # Snapshots contain other people's command lines and file paths.
+          mode: 0700

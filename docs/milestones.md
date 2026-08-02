@@ -86,7 +86,8 @@ than two.
 | `doctor` detects and explains known failure modes | ✔ including the `unprivileged_bpf_disabled` red herring and an SELinux `ausearch` hint |
 | README with a worked incident walkthrough | ✔ `README.md` |
 | Daemon runs under the unit, integration-verified | ◐ the unit is written and its sandboxing reasoned through, but it has not been installed and exercised on this box |
-| goreleaser static binaries | ✗ not done |
+| goreleaser static binaries | ✔ `.goreleaser.yaml`; verified with a snapshot build producing static amd64 and arm64 binaries plus RPM and DEB packages. The extracted binary was run: `--version` stamped, `doctor` passed, and it recorded and snapshotted correctly. |
+| CI | ✔ `.github/workflows/ci.yml` (build, unit tests with `-race`, decoder fuzzing, lint, integration on a live kernel, smoke test, informational perf) and `release.yml` (gated on the tests passing) |
 
 ---
 
