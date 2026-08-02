@@ -482,7 +482,25 @@ that the generic class exists to prevent, and does so at exactly the moment the
 kernel is producing something unexpected — which is when an operator most needs
 to know.
 
-### 6.5 What Wake does not require
+### 6.5 Parsing timestamps
+
+Every timestamp in a snapshot is RFC 3339 with a `Z` suffix. Two properties
+routinely catch a first implementation, and both are visible in the reference
+fixture:
+
+- **Trailing zero fractional digits are trimmed.** Go's JSON encoder writes
+  `…06.5Z` rather than `…06.500000000Z`, and `…06Z` rather than `…06.000000000Z`.
+  A parser must accept any number of fractional digits, from none up to
+  nanosecond precision (RFC 3339 §5.6). A reader that compares timestamps as
+  **strings** will conclude that `14:20:06Z` is later than `14:20:06.5Z` and
+  wrongly report an ordering violation. Parse, then compare.
+- **Wake writes nanoseconds; many languages parse at most microseconds.** If you
+  truncate the fraction to fit, split the timezone off *first*. Scanning for
+  digits after the `.` in `…06.998Z` — once `Z` has been expanded to `+00:00` —
+  collects the offset's digits too, silently producing a timezone-naive value
+  that then cannot be compared with an aware one.
+
+### 6.6 What Wake does not require
 
 For the avoidance of doubt, a consumer is free to ignore any part of a snapshot
 it has no use for. Reading only `events.jsonl.zst` and never `system.json`,

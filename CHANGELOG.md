@@ -51,6 +51,9 @@ regenerating.
   previously scattered through the document's prose.
 - Reference fixture now exercises **all seven event classes** and is regenerable
   with `make fixture` from a committed generator.
+- `examples/conformance/` — a worked example consumer written from the format
+  document alone, demonstrating the four obligations. Writing it surfaced the
+  timestamp-parsing traps now documented in `docs/snapshot-format.md` §6.5.
 - This file.
 
 ### Changed

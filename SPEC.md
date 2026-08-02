@@ -141,6 +141,9 @@ else:
 - `testdata/fixtures/reference-snapshot/` — a small, deterministic snapshot
   exercising **every event class**, so a consumer's test suite has something
   stable to read without a daemon, root or a kernel.
+- `examples/conformance/` — a worked example consumer, written from the document
+  alone in a language Wake is not written in. It is evidence for the claim above
+  rather than a supported tool; copy it, do not depend on it.
 
 Wake ships **no export subcommand and no client library**. Both were considered
 and rejected: zstd and JSONL are universally available, so an export verb would

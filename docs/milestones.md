@@ -104,6 +104,7 @@ than two.
 | Compatibility promise stated and enforced | SPEC.md §6.4; `CHANGELOG.md` carries the schema history; the fixture test names a serialisation change as a breaking change rather than a stale fixture. Mutation-verified by bumping `SchemaVersion` and by renaming a JSON tag |
 | Fixture exercises every event class | `testdata/fixtures/reference-snapshot/` — 8 events across all 7 classes including `generic`, plus a non-zero drop count so the drop-surfacing obligation can be exercised |
 | Fixture is regenerable | `make fixture` from `internal/snapshot/mkfixture`; byte-for-byte reproducible, verified by regenerating twice and comparing checksums |
+| The contract is implementable from the doc alone | **Demonstrated, not asserted**: `examples/conformance/conformance.py` was written against `docs/snapshot-format.md` and the fixture only, in Python, and reads both the fixture and live snapshots. Exercised by `internal/snapshot/example_test.go`. Writing it found a real documentation gap (timestamp parsing), now §6.5 |
 
 ---
 

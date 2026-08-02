@@ -137,7 +137,8 @@ stable to read without needing a live daemon, root, or a kernel.
 
 Drop counters travel with the snapshot in its manifest, so a downstream tool can
 tell an incomplete capture from a complete one rather than reasoning over a gap
-it cannot see.
+it cannot see. `docs/snapshot-format.md` §6 states what a conforming consumer
+must do; `examples/conformance/` is a worked example that does it.
 
 ## Guarantees
 
