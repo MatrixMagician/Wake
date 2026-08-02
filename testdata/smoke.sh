@@ -8,7 +8,10 @@ SOCK=/tmp/wake-smoke.sock
 DIR=/tmp/wake-smoke-snapshots
 CFG=/tmp/wake-smoke.toml
 
-cleanup() { pkill -f "wake run --socket $SOCK" 2>/dev/null; }
+# Match on the config path, which is what actually appears on the command line.
+# An almost-right pattern here leaks a BPF-loading daemon on every run, which is
+# a slow, quiet way to fill a developer's machine.
+cleanup() { pkill -f "wake run --config $CFG" 2>/dev/null; }
 trap cleanup EXIT
 cleanup; sleep 1
 rm -rf "$DIR" "$SOCK"
@@ -125,6 +128,13 @@ ok "prune deletes only with --yes"
 
 grep -Ei "fatal error|^panic:" /tmp/wake-smoke.log && fail "the daemon panicked"
 ok "no panics"
+
+cleanup
+sleep 1
+if pgrep -f "wake run --config $CFG" >/dev/null 2>&1; then
+  fail "the smoke test leaked a daemon; its cleanup pattern no longer matches"
+fi
+ok "no leaked daemons"
 
 echo
 echo "ALL SMOKE CHECKS PASSED"

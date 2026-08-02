@@ -30,6 +30,12 @@ comm_deny = []
 # ---------------------------------------------------------------------------
 # classes — independently enable or disable each event class (CONTEXT.md,
 # "Class"). Unknown class names are a validation error.
+#
+# This table MERGES with the built-in defaults rather than replacing them: a
+# class you do not mention keeps its default (all six are on). To turn a class
+# off you must say so explicitly — omitting it is not the same as disabling it.
+# Every class is listed below precisely so that what is recorded is visible
+# here rather than inferred from an absence.
 # ---------------------------------------------------------------------------
 [classes]
 exec    = true
