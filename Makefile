@@ -14,8 +14,14 @@ LDFLAGS := -X $(PKG)/internal/version.Version=$(VERSION)
 
 all: build
 
+## bpf/vmlinux.h: CO-RE type definitions dumped from the build host's BTF.
+## Generated rather than committed: it is 5 MiB of derived data, and CO-RE
+## means the build host's types need not match the target's.
+bpf/vmlinux.h:
+	bpftool btf dump file /sys/kernel/btf/vmlinux format c > $@
+
 ## generate: compile the BPF C sources and produce the Go bindings.
-generate:
+generate: bpf/vmlinux.h
 	$(GO) generate ./...
 
 ## build: static binary with the BPF objects embedded.

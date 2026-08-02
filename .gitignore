@@ -30,3 +30,6 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Generated from the build host's BTF by 'make bpf/vmlinux.h'; not source.
+bpf/vmlinux.h
