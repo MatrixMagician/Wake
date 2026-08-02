@@ -39,6 +39,27 @@ The following remain hardened, having proved compatible:
 the last processes the OOM killer considers during the very incident it exists
 to record.
 
+## Verification
+
+This is not reasoning alone: the unit was installed and the daemon run under it
+on the reference box (Fedora 44, kernel 7.1.5-201.fc44.x86_64). Observed:
+
+- All six event classes loaded and attached under the sandbox.
+- `wake status` and `wake trigger` worked over the control socket in
+  `RuntimeDirectory=wake`.
+- A snapshot was written to `StateDirectory=wake` at mode 0700, containing
+  `manifest.json`, `events.jsonl.zst` and `system.json`.
+- The sd-bus unit-failure trigger fired for a purposely-failing transient unit
+  and produced a snapshot, proving the bus subscription survives the sandbox.
+- `Type=notify` readiness was accepted; systemd reported the unit active rather
+  than timing out.
+- `systemd-analyze security wake.service` scores **3.8 (OK)**. Its remaining
+  complaints are the settings listed above, each of which is load-bearing.
+
+`UMask=0077` was added as a result of that run: `systemd-analyze` flagged the
+default, and while the snapshot writer chmods 0700 explicitly, defence in depth
+costs nothing here.
+
 ## Consequences
 
 - `systemd-analyze security wake.service` will report a middling score. That is

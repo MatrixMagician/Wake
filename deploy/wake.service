@@ -40,6 +40,9 @@ RuntimeDirectory=wake
 RuntimeDirectoryMode=0700
 ReadWritePaths=/var/lib/wake
 PrivateTmp=yes
+# Snapshots are chmod'ed 0700 explicitly by the writer; this is belt and
+# braces so that nothing Wake creates is ever group- or world-readable.
+UMask=0077
 
 # ProtectKernelTunables must stay off: reading /sys/kernel/btf/vmlinux and the
 # tracefs event format files is how Wake verifies what it is binding to, and
