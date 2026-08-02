@@ -2,13 +2,18 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/MatrixMagician/wake/internal/snapshot"
 )
 
 // The snapshots subcommands work directly on the snapshot directory rather
@@ -69,34 +74,63 @@ func snapshotsCmd() *cobra.Command {
 	}
 
 	var keep int
-	var maxBytes string
-	var dryRun bool
+	var maxSize string
+	var confirm bool
 	prune := &cobra.Command{
 		Use:   "prune",
 		Short: "Delete the oldest snapshots to fit the retention bounds",
-		Args:  cobra.NoArgs,
+		Long: "Deleting evidence is not something to do by accident, so prune shows what\n" +
+			"it would remove and does nothing unless --yes is given. The dry run and\n" +
+			"the real thing share one decision path, so they cannot disagree.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// Deleting evidence is not something to do by accident, so prune
-			// defaults to showing what it would remove.
-			if !dryRun {
-				fmt.Fprintln(cmd.ErrOrStderr(),
-					"Refusing to delete without --yes; showing what would be removed.")
-			}
-			snaps, err := listSnapshots(dir)
-			if err != nil {
-				return err
-			}
-			for i, s := range snaps {
-				if keep > 0 && i >= keep {
-					fmt.Fprintf(cmd.OutOrStdout(), "would remove %s (%s)\n", s.ID, humanBytes(s.Bytes))
+			settings := snapshot.RetentionSettings{MaxCount: keep}
+			if maxSize != "" {
+				n, err := parseSize(maxSize)
+				if err != nil {
+					return err
 				}
+				settings.MaxTotalBytes = n
+			}
+			if settings.MaxCount == 0 && settings.MaxTotalBytes == 0 {
+				return errors.New("nothing to prune by: give --keep and/or --max-size")
+			}
+
+			res, err := snapshot.NewPruner(dir).Prune(settings, !confirm)
+			if err != nil {
+				return fmt.Errorf("pruning %s: %w", dir, err)
+			}
+
+			if jsonOutput {
+				return writeJSON(cmd.OutOrStdout(), res)
+			}
+
+			out := cmd.OutOrStdout()
+			if len(res.Removed) == 0 {
+				fmt.Fprintf(out, "Nothing to remove: %d snapshot(s) already fit the bounds.\n",
+					len(res.Kept))
+				return nil
+			}
+			verb := "would remove"
+			if confirm {
+				verb = "removed"
+			}
+			for _, id := range res.Removed {
+				fmt.Fprintf(out, "%s %s\n", verb, id)
+			}
+			fmt.Fprintf(out, "%s %d snapshot(s), %s freed; %d kept.\n",
+				verb, len(res.Removed), humanBytes(res.FreedBytes), len(res.Kept))
+			if !confirm {
+				fmt.Fprintln(out, "Nothing was deleted. Re-run with --yes to apply.")
 			}
 			return nil
 		},
 	}
-	prune.Flags().IntVar(&keep, "keep", 0, "keep this many newest snapshots")
-	prune.Flags().StringVar(&maxBytes, "max-size", "", "keep at most this total size (e.g. 2GiB)")
-	prune.Flags().BoolVar(&dryRun, "yes", false, "actually delete, rather than listing")
+	prune.Flags().IntVar(&keep, "keep", 0, "keep at most this many newest snapshots")
+	prune.Flags().StringVar(&maxSize, "max-size", "",
+		"keep at most this total size (e.g. 2GiB, 500MB, 1073741824)")
+	prune.Flags().BoolVar(&confirm, "yes", false,
+		"actually delete; without this, prune only reports what it would do")
 
 	cmd.AddCommand(list, show, prune)
 	return cmd
@@ -174,4 +208,51 @@ func dirSize(path string) int64 {
 		return nil
 	})
 	return total
+}
+
+// parseSize accepts a byte count with an optional unit suffix, because an
+// operator setting a retention budget thinks in gigabytes, not in 2147483648.
+// Both SI and binary suffixes are accepted and treated as binary: a retention
+// bound is a disk-space guard, and being 7% more conservative than asked is the
+// harmless direction to err in.
+func parseSize(s string) (int64, error) {
+	text := strings.TrimSpace(strings.ToUpper(s))
+	if text == "" {
+		return 0, errors.New("empty size")
+	}
+
+	multiplier := int64(1)
+	for _, unit := range []struct {
+		suffixes []string
+		factor   int64
+	}{
+		{[]string{"TIB", "TB", "T"}, 1 << 40},
+		{[]string{"GIB", "GB", "G"}, 1 << 30},
+		{[]string{"MIB", "MB", "M"}, 1 << 20},
+		{[]string{"KIB", "KB", "K"}, 1 << 10},
+		{[]string{"B"}, 1},
+	} {
+		matched := false
+		for _, suffix := range unit.suffixes {
+			if strings.HasSuffix(text, suffix) {
+				text = strings.TrimSpace(strings.TrimSuffix(text, suffix))
+				multiplier = unit.factor
+				matched = true
+				break
+			}
+		}
+		if matched {
+			break
+		}
+	}
+
+	value, err := strconv.ParseFloat(text, 64)
+	if err != nil {
+		return 0, fmt.Errorf("cannot parse size %q: expected a number with an "+
+			"optional unit such as 2GiB, 500MB or 1073741824", s)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("size %q is negative", s)
+	}
+	return int64(value * float64(multiplier)), nil
 }

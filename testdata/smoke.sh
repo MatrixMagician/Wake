@@ -106,6 +106,23 @@ print('ok: manifest is complete, all four drop boundaries reported')
 ./wake snapshots list --dir "$DIR" | grep -q . || fail "snapshots list is empty"
 ok "snapshots list"
 
+# Exit codes are this command's whole contract: provisioning gates on them.
+./wake verify-config "$CFG" >/dev/null 2>&1 || fail "verify-config rejected a valid config"
+./wake verify-config /nonexistent-wake.toml >/dev/null 2>&1 && fail "verify-config accepted a missing file"
+printf '[ring]\nwindow = "0s"\nmax_events = 0\nmemory_budget_bytes = 0\n' > /tmp/wake-smoke-bad.toml
+./wake verify-config /tmp/wake-smoke-bad.toml >/dev/null 2>&1 && fail "verify-config accepted an unbounded ring"
+ok "verify-config is exit-code gated"
+
+# prune must actually delete, and must not delete without --yes.
+BEFORE=$(find "$DIR" -maxdepth 1 -mindepth 1 -type d | wc -l)
+./wake snapshots prune --dir "$DIR" --keep 1 >/dev/null
+AFTER_DRY=$(find "$DIR" -maxdepth 1 -mindepth 1 -type d | wc -l)
+[[ "$BEFORE" == "$AFTER_DRY" ]] || fail "prune deleted without --yes"
+./wake snapshots prune --dir "$DIR" --keep 1 --yes >/dev/null
+AFTER=$(find "$DIR" -maxdepth 1 -mindepth 1 -type d | wc -l)
+[[ "$AFTER" -le 1 ]] || fail "prune --yes did not delete ($AFTER remain)"
+ok "prune deletes only with --yes"
+
 grep -Ei "fatal error|^panic:" /tmp/wake-smoke.log && fail "the daemon panicked"
 ok "no panics"
 
