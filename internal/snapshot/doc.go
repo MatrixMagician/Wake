@@ -3,8 +3,8 @@
 // manifest.json, events.jsonl.zst, system.json and a proc/ scrape of the
 // triggering process (SPEC.md §2 goal 5, milestones M4/M5). See CONTEXT.md
 // for the binding definitions of Snapshot, Trigger and Freeze, and
-// docs/snapshot-format.md for the full serialised contract that Sift's
-// adapter is written against.
+// docs/snapshot-format.md for the full serialised contract that consumers
+// are written against.
 //
 // This package owns none of the daemon's live state. It does not import
 // internal/ring, internal/config or internal/trigger: callers assemble an

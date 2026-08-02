@@ -31,8 +31,9 @@ continues into the new ring while the frozen one is serialised off the hot path.
 
 **Snapshot** — a self-contained directory under `/var/lib/wake/snapshots/<timestamp>-<trigger>/`,
 mode 0700, containing `manifest.json`, `events.jsonl.zst`, `system.json`, and a `proc/`
-scrape of the triggering process. Its schema is a **versioned public contract** consumed by
-Sift; `schema_version` lives in the manifest and governs the whole snapshot.
+scrape of the triggering process. Its schema is a **versioned public contract**
+read by downstream tooling; `schema_version` lives in the manifest and governs
+the whole snapshot.
 
 **Enrichment** — the attribution triple (cgroup path, systemd unit, container ID) plus comm,
 ppid chain, and user name attached to an event at snapshot time from the enrichment cache.

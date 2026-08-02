@@ -74,7 +74,7 @@ type RetentionSettings struct {
 }
 
 // Manifest is the serialised form of manifest.json: the single file a
-// reader (e.g. Sift) opens first to learn what a snapshot contains and
+// reader opens first to learn what a snapshot contains and
 // whether to trust it. See docs/snapshot-format.md for the full field-by-
 // field contract.
 type Manifest struct {

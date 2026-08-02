@@ -68,7 +68,7 @@ meaningful BPF complexity.
 | Cooldown prevents storming | `TestCooldownPreventsStorms` — 40 crashes produce 1 snapshot and a suppression count of 39 |
 | Accurate drop stats mid-load | drop report is captured at freeze and copied verbatim into the manifest |
 
-## M5 — Redaction + retention + Sift contract ✔
+## M5 — Redaction + retention + snapshot contract ✔
 
 | Criterion | Evidence |
 |---|---|
@@ -104,20 +104,6 @@ than two.
    this unit fail and be fixed. Until the daemon has run under it, that ADR is
    reasoning rather than evidence.
 2. **goreleaser configuration** for tagged static builds.
-3. **A Sift adapter**, written from `docs/snapshot-format.md` alone, which is
-   the real test of whether that document meets its stated standard.
-
-## Downstream
-
-The companion triage engine **Sift** now has a `wake` adapter
-(`Sift/src/sift/adapters/wake.py`, `Sift/docs/decisions/0022`). It reads a
-snapshot's `events.jsonl.zst` and sibling manifest, and — the part that matters
-— turns non-zero drop counters into an explicit warning in the case timeline, so
-an incomplete capture cannot be mistaken for a complete one downstream. Verified
-against both the committed reference fixture and a live snapshot from this box.
-
-`system.json` and `proc/` are not yet ingested by that adapter; they are
-point-in-time state rather than events.
 
 ## Open questions
 

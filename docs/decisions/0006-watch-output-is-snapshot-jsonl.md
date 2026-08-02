@@ -28,7 +28,7 @@ what reaches a terminal or a pipe is byte-identical to a snapshot line.
 
 - A tuning session with `wake watch | jq` and an analysis of
   `events.jsonl.zst | jq` use identical filters. This is the whole point.
-- A Sift adapter written against `docs/snapshot-format.md` can also consume a
-  live watch stream without a second parser.
+- A consumer written against `docs/snapshot-format.md` can also read a live
+  watch stream without a second parser.
 - Changing the event schema changes both surfaces at once, which is correct:
   they are the same contract.

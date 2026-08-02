@@ -20,8 +20,7 @@ import (
 //
 // Nothing exercised either, so a mutation that made staging visible passed
 // every test. A consumer following the documented rule would then have read a
-// half-written snapshot and, in Sift's case, drawn conclusions from a truncated
-// event stream.
+// half-written snapshot and drawn conclusions from a truncated event stream.
 
 // observingFS records the paths a write touches, so the sequence of filesystem
 // operations can be asserted rather than only the end state.

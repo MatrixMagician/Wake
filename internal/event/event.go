@@ -12,8 +12,8 @@ import (
 )
 
 // SchemaVersion governs the layout of every serialised event and of the
-// snapshot manifest. It is a public contract consumed by Sift: bump it for any
-// change that an existing reader could misinterpret.
+// snapshot manifest. It is a public contract: bump it for any change that an
+// existing reader could misinterpret.
 const SchemaVersion = 1
 
 // Class is a family of events with its own BPF program, decode path, filters
@@ -67,7 +67,7 @@ type Enrichment struct {
 //
 // The struct is deliberately flat and union-ish rather than an interface
 // hierarchy: it is serialised as a single JSONL schema, sorted by time, and
-// read by a foreign consumer (Sift). Class selects which optional fields are
+// read by foreign consumers. Class selects which optional fields are
 // meaningful; absent fields are omitted rather than zero-filled.
 type Event struct {
 	// Common to every class.

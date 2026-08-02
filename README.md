@@ -122,24 +122,16 @@ $ sudo zstdcat /var/lib/wake/snapshots/20260802-*/events.jsonl.zst \
 The disk filled, the cube write failed, and a supervisor killed the service.
 None of that was in the application's log.
 
-**5. Feed it to Sift.** Snapshots are a versioned public contract designed as a
-first-class input for [Sift](https://github.com/MatrixMagician/Sift), the
-companion triage engine, which has a `wake` adapter:
+**5. Take it away.** A snapshot is a directory: copy it off the box and read it
+anywhere. The format is a versioned public contract, documented in
+`docs/snapshot-format.md` to a standard that a consumer can be written from the
+document alone, without reading this repository's source. A reference fixture
+snapshot ships in `testdata/fixtures/` so a consumer's tests have something
+stable to read without needing a live daemon, root, or a kernel.
 
-```bash
-sift new --case incident-4471
-cp -r /var/lib/wake/snapshots/20260802-* cases/incident-4471/input/
-sift ingest cases/incident-4471
-sift analyze cases/incident-4471
-```
-
-The adapter carries Wake's drop counters through as an explicit warning, so an
-incomplete capture cannot be silently reasoned over.
-
-The format is documented in `docs/snapshot-format.md` to a standard that an
-adapter can be written from the document alone — and that adapter was, without
-reading this repository's source. A reference fixture snapshot ships in
-`testdata/` for Sift's test suite.
+Drop counters travel with the snapshot in its manifest, so a downstream tool can
+tell an incomplete capture from a complete one rather than reasoning over a gap
+it cannot see.
 
 ## Guarantees
 

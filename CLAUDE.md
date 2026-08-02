@@ -12,8 +12,8 @@ self-contained **snapshot** of the last N minutes only when a trigger fires.
 
 **SPEC.md is the authoritative specification.** Read the relevant section before
 implementing anything. Milestones and their acceptance criteria are SPEC.md §6; the
-repository layout is §7. Snapshots are a versioned public contract consumed by the
-sibling project **Sift** (`../Sift`) — changing the schema is a breaking change.
+repository layout is §7. Snapshots are a versioned public contract read by
+downstream tooling — changing the schema is a breaking change.
 
 ## Commands
 

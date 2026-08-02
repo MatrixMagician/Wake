@@ -2,10 +2,10 @@
 
 A small, deterministic, hand-checkable snapshot committed for two purposes:
 
-1. **Sift's test suite.** A `wake` adapter for Sift can be developed and tested
-   against this fixture without a live Wake daemon, root, or a kernel — see
-   `../../../docs/snapshot-format.md` for the full field-by-field contract this
-   fixture demonstrates.
+1. **Downstream consumers.** A reader of Wake snapshots can be developed and
+   tested against this fixture without a live Wake daemon, root, or a kernel —
+   see `../../../docs/snapshot-format.md` for the full field-by-field contract
+   this fixture demonstrates.
 2. **Schema drift detection.** `internal/snapshot/fixture_test.go` validates this
    fixture against the live `snapshot` package types (`Manifest`, `SystemInfo`,
    `event.Event`) on every `go test ./internal/snapshot/...`. If a future change to

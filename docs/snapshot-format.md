@@ -5,8 +5,8 @@ whole snapshot and is carried in `manifest.json`. Any change that an existing re
 could misinterpret bumps this number; readers should refuse (or degrade gracefully
 for) a `schema_version` they do not recognise.
 
-This document is written so that a **Sift** adapter — or any other consumer — can be
-implemented from this file alone, without reading Wake's source.
+This document is written so that a consumer can be implemented from this file
+alone, without reading Wake's source.
 
 ---
 

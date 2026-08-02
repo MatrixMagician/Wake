@@ -18,7 +18,7 @@ import (
 // well-defined) rather than hashing a Go-internal representation like
 // fmt.Sprintf("%#v", ...), which is not a stability contract Go makes.
 // Changing this function changes every future config hash; that is fine,
-// but do it deliberately and note it, since Sift may key on it.
+// but do it deliberately and note it, since consumers may key on it.
 func (c *Config) Hash() string {
 	// Errors are impossible here: Config contains no channels, funcs, or
 	// cyclic structures, only the plain data types declared in this

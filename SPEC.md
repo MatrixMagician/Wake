@@ -10,7 +10,7 @@ Wake is a single-binary flight recorder for Linux hosts. It loads a small set of
 
 Wake is a diagnostic tool for support and reliability engineers, not a security platform. It answers "what actually happened in the ninety seconds before this thing died?" — the question logs cannot answer because applications only log what they chose to.
 
-Reference platform: Fedora (kernel ≥ 6.x with BTF, which Fedora ships), rootless-unfriendly by nature (see privileges, §3), systemd service deployment. Snapshots are designed as a first-class input adapter for **Sift** (the companion triage engine); the snapshot schema is a versioned public contract.
+Reference platform: Fedora (kernel ≥ 6.x with BTF, which Fedora ships), rootless-unfriendly by nature (see privileges, §3), systemd service deployment. Snapshots are designed to be consumed by downstream triage tooling; the snapshot schema is a versioned public contract.
 
 ### Positioning vs prior art
 - **auditd:** capture-everything-to-disk with painful rules; Wake records to memory only and persists only on trigger.
@@ -29,7 +29,7 @@ Reference platform: Fedora (kernel ≥ 6.x with BTF, which Fedora ships), rootle
 4. **Trigger engine:** (a) watched-process rules (comm/cgroup/unit glob + exit-code predicate), (b) OOM kill anywhere in scope, (c) configured signal delivered to scoped process, (d) manual (`wake trigger`, SIGUSR1, unix socket), (e) systemd unit entering failed state (via sd-bus subscription). Cooldown per rule to prevent snapshot storms.
 5. **Snapshot:** directory containing `manifest.json` (trigger, host, wake version, schema version, drop stats, config hash), `events.jsonl.zst`, `system.json` (uname, meminfo/pressure at trigger, uptime), and `proc/` scrape of the triggering process where it still exists (status, limits, fdinfo list, cgroup — never file *contents*).
 6. **Enrichment:** PID → comm, ppid chain (depth-limited), cgroup path → systemd unit / container ID (Podman and Kubernetes cgroup layouts), UID → name; performed at snapshot time from a continuously-maintained lightweight cache, so short-lived processes that already exited are still attributable.
-7. **Sift adapter contract:** schema documented such that a `wake` adapter for Sift is implementable without reading Wake's source; a reference fixture snapshot ships in-repo for Sift's test suite.
+7. **Snapshot contract:** schema documented such that a consumer is implementable from the documentation alone, without reading Wake's source; a reference fixture snapshot ships in-repo so a consumer's tests have something stable to read.
 8. Single static Go binary; BPF objects compiled at build time (bpf2go/CO-RE) and embedded — no clang, headers, or kernel modules on the target.
 
 ### Non-Goals (v1)
@@ -76,7 +76,7 @@ Reference platform: Fedora (kernel ≥ 6.x with BTF, which Fedora ships), rootle
 ```
 
 Design rules:
-- **Decode is total:** unknown/extended event layouts decode to a generic record with raw payload retained, never dropped silently — mirrors Sift's nothing-disappears rule.
+- **Decode is total:** unknown/extended event layouts decode to a generic record with raw payload retained, never dropped silently — nothing disappears without being counted.
 - **The ring is the only steady-state memory consumer:** enrichment cache is size-capped LRU; everything else is O(1).
 - **Freezing is cheap:** trigger swaps the active ring for a fresh one atomically; the frozen ring is serialised off the hot path, so recording continues through snapshot writing.
 - **Config is one TOML file** (`/etc/wake/wake.toml`): scopes, event classes, filters, triggers, ring bounds, retention, redaction (argv/path regex masking — support engineers capture other people's boxes; redaction is config, not code).
@@ -130,11 +130,11 @@ Each milestone lands with tests, `go vet`, `golangci-lint`, and `-race` clean. B
 **M4 — Trigger engine + snapshot writer**
 ✔ All five trigger types fire in integration tests (including sd-bus unit-failure via a purposely-failing test unit); trigger→snapshot completes with recording uninterrupted (events generated during writing appear in the *next* ring); snapshot contains manifest, zstd JSONL, system.json, proc/ scrape; cooldown prevents storming; a snapshot taken mid-load includes accurate drop stats.
 
-**M5 — Redaction + retention + Sift contract**
-✔ Argv/path redaction masks configured patterns before serialisation (test proves masked values never reach disk); retention pruning by count and size; snapshot schema documented in `docs/snapshot-format.md` to the standard that a Sift adapter is written from the doc alone; reference fixture snapshot committed and validated by a schema test.
+**M5 — Redaction + retention + snapshot contract**
+✔ Argv/path redaction masks configured patterns before serialisation (test proves masked values never reach disk); retention pruning by count and size; snapshot schema documented in `docs/snapshot-format.md` to the standard that a consumer can be written from the doc alone; reference fixture snapshot committed and validated by a schema test.
 
 **M6 — Hardening + packaging + release**
-✔ Hardened systemd unit ships and daemon runs under it (integration-verified — sandboxing options and BPF interact non-obviously; document what had to be loosened and why); `doctor` detects and explains the known failure modes (missing caps, locked-down `kernel.unprivileged_bpf_disabled` irrelevance under caps, SELinux denials hint); goreleaser static binaries; README with a worked incident walkthrough: break a service, watch Wake catch it, feed the snapshot to Sift.
+✔ Hardened systemd unit ships and daemon runs under it (integration-verified — sandboxing options and BPF interact non-obviously; document what had to be loosened and why); `doctor` detects and explains the known failure modes (missing caps, locked-down `kernel.unprivileged_bpf_disabled` irrelevance under caps, SELinux denials hint); goreleaser static binaries; README with a worked incident walkthrough: break a service, watch Wake catch it, read the snapshot it produced.
 
 ---
 

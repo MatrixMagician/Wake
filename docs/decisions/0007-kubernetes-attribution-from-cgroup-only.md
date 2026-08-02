@@ -41,7 +41,7 @@ Three reasons, in order of weight:
 ## Consequences
 
 - A snapshot carries a container ID and pod UID, not a pod *name* or namespace.
-  The consumer (Sift, or a human) resolves those from the cluster later, at
+  The consumer — a tool or a human — resolves those from the cluster later, at
   their leisure, from a machine that has credentials.
 - New runtime layouts are a table addition in `internal/enrich` with a fixture,
   not an architectural change.
