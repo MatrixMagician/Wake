@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "id": "20260802T142006Z-watched-process",
+  "wake_version": "v0.9.2-fixture",
+  "generated_at": "2026-08-02T14:20:07.5Z",
+  "trigger": {
+    "type": "watched-process",
+    "reason": "exit code 137",
+    "rule": "mstr-crash",
+    "pid": 4321,
+    "unit": "mstr.service",
+    "fired_at": "2026-08-02T14:20:06.998Z"
+  },
+  "host": {
+    "hostname": "fixture-host",
+    "kernel_release": "6.10.0-fixture",
+    "machine": "x86_64"
+  },
+  "capture_window": {
+    "first_event_ts": "2026-08-02T14:20:04.1Z",
+    "last_event_ts": "2026-08-02T14:20:06.998Z"
+  },
+  "event_count": 3,
+  "event_counts": {
+    "connect": 0,
+    "exec": 1,
+    "exit": 1,
+    "generic": 0,
+    "oom": 0,
+    "open": 1,
+    "signal": 0
+  },
+  "drops": {
+    "decode": {
+      "connect": 0,
+      "exec": 0,
+      "exit": 0,
+      "generic": 0,
+      "oom": 0,
+      "open": 0,
+      "signal": 0
+    },
+    "kernel_ringbuf": {
+      "connect": 0,
+      "exec": 0,
+      "exit": 0,
+      "generic": 0,
+      "oom": 0,
+      "open": 0,
+      "signal": 0
+    },
+    "userspace_ring": {
+      "connect": 0,
+      "exec": 0,
+      "exit": 0,
+      "generic": 0,
+      "oom": 0,
+      "open": 0,
+      "signal": 0
+    },
+    "watch_fanout": {
+      "connect": 0,
+      "exec": 0,
+      "exit": 0,
+      "generic": 0,
+      "oom": 0,
+      "open": 0,
+      "signal": 0
+    }
+  },
+  "config_hash": "fixture0000000000000000000000000000000000000000000000000000000",
+  "proc": {
+    "pid": 4321,
+    "found": true,
+    "files": [
+      "cgroup",
+      "cmdline",
+      "limits",
+      "status",
+      "fd_listing.txt"
+    ]
+  }
+}

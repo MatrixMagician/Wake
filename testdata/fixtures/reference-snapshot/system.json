@@ -1,0 +1,44 @@
+{
+  "captured_at": "2026-08-02T14:20:07.5Z",
+  "uname": {
+    "sysname": "Linux",
+    "nodename": "fixture-host",
+    "release": "6.10.0-fixture",
+    "version": "#1 SMP fixture",
+    "machine": "x86_64"
+  },
+  "meminfo": {
+    "MemFree": "2048000 kB",
+    "MemTotal": "16384000 kB"
+  },
+  "pressure": {
+    "cpu": {
+      "some": {
+        "avg10": "1.20",
+        "avg300": "0.30",
+        "avg60": "0.80",
+        "total": "99999"
+      }
+    },
+    "memory": {
+      "some": {
+        "avg10": "0.50",
+        "avg300": "0.10",
+        "avg60": "0.20",
+        "total": "12345"
+      },
+      "full": {
+        "avg10": "0.10",
+        "avg300": "0.01",
+        "avg60": "0.05",
+        "total": "6789"
+      }
+    }
+  },
+  "uptime_seconds": 123456.78,
+  "loadavg": [
+    0.1,
+    0.2,
+    0.3
+  ]
+}

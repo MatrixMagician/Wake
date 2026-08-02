@@ -1,0 +1,4 @@
+0	/dev/null
+1	socket:[48213]
+2	/var/log/mstr/error.log
+3	pipe:[48214]
