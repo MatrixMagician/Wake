@@ -14,13 +14,13 @@ import (
 	"github.com/MatrixMagician/wake/internal/event"
 )
 
-func statusCmd() *cobra.Command {
+func statusCmd(opts *options) *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show ring occupancy, drops, uptime and active triggers",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			conn, dec, err := ctl.Dial(socketPath, ctl.Request{Command: ctl.CmdStatus})
+			conn, dec, err := ctl.Dial(opts.socketPath, ctl.Request{Command: ctl.CmdStatus})
 			if err != nil {
 				return err
 			}
@@ -33,7 +33,7 @@ func statusCmd() *cobra.Command {
 			if resp.Error != "" {
 				return fmt.Errorf("daemon: %s", resp.Error)
 			}
-			if jsonOutput {
+			if opts.jsonOutput {
 				return writeJSON(cmd.OutOrStdout(), resp.Status)
 			}
 			printStatus(cmd.OutOrStdout(), resp.Status)
@@ -115,14 +115,14 @@ func totalDrops(r event.DropReport) uint64 {
 	return t
 }
 
-func triggerCmd() *cobra.Command {
+func triggerCmd(opts *options) *cobra.Command {
 	var reason string
 	cmd := &cobra.Command{
 		Use:   "trigger",
 		Short: "Take a snapshot now",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			conn, dec, err := ctl.Dial(socketPath,
+			conn, dec, err := ctl.Dial(opts.socketPath,
 				ctl.Request{Command: ctl.CmdTrigger, Reason: reason})
 			if err != nil {
 				return err
@@ -136,7 +136,7 @@ func triggerCmd() *cobra.Command {
 			if resp.Error != "" {
 				return fmt.Errorf("daemon: %s", resp.Error)
 			}
-			if jsonOutput {
+			if opts.jsonOutput {
 				return writeJSON(cmd.OutOrStdout(), resp.Result)
 			}
 			if resp.Result == nil || !resp.Result.Accepted {
@@ -156,7 +156,7 @@ func triggerCmd() *cobra.Command {
 	return cmd
 }
 
-func watchCmd() *cobra.Command {
+func watchCmd(opts *options) *cobra.Command {
 	var classes []string
 	var unit string
 	cmd := &cobra.Command{
@@ -169,7 +169,7 @@ func watchCmd() *cobra.Command {
 			"boundary, visible in `wake status`.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			conn, dec, err := ctl.Dial(socketPath, ctl.Request{
+			conn, dec, err := ctl.Dial(opts.socketPath, ctl.Request{
 				Command: ctl.CmdWatch, Classes: classes, Unit: unit,
 			})
 			if err != nil {
@@ -203,14 +203,14 @@ func watchCmd() *cobra.Command {
 	return cmd
 }
 
-func doctorCmd() *cobra.Command {
+func doctorCmd(opts *options) *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
 		Short: "Check whether this host can run Wake, and explain any reason it cannot",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			report := doctor.Run()
-			if jsonOutput {
+			if opts.jsonOutput {
 				if err := writeJSON(cmd.OutOrStdout(), report); err != nil {
 					return err
 				}

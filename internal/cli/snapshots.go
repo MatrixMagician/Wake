@@ -21,7 +21,7 @@ import (
 // running — which is exactly the situation when someone has copied a snapshot
 // directory to their own machine to look at it.
 
-func snapshotsCmd() *cobra.Command {
+func snapshotsCmd(opts *options) *cobra.Command {
 	var dir string
 	cmd := &cobra.Command{
 		Use:   "snapshots",
@@ -40,7 +40,7 @@ func snapshotsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if jsonOutput {
+			if opts.jsonOutput {
 				return writeJSON(cmd.OutOrStdout(), snaps)
 			}
 			if len(snaps) == 0 {
@@ -101,7 +101,7 @@ func snapshotsCmd() *cobra.Command {
 				return fmt.Errorf("pruning %s: %w", dir, err)
 			}
 
-			if jsonOutput {
+			if opts.jsonOutput {
 				return writeJSON(cmd.OutOrStdout(), res)
 			}
 

@@ -11,7 +11,7 @@ import (
 	"github.com/MatrixMagician/wake/internal/config"
 )
 
-func verifyConfigCmd() *cobra.Command {
+func verifyConfigCmd(opts *options) *cobra.Command {
 	return &cobra.Command{
 		Use:   "verify-config <file>",
 		Short: "Parse and semantically check a configuration file",
@@ -45,7 +45,7 @@ func verifyConfigCmd() *cobra.Command {
 				return fmt.Errorf("%s: %w", path, err)
 			}
 
-			if jsonOutput {
+			if opts.jsonOutput {
 				return writeJSON(cmd.OutOrStdout(), cfg)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "%s is valid.\nConfig hash: %s\n",

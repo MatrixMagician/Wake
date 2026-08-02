@@ -15,7 +15,7 @@ import (
 	"github.com/MatrixMagician/wake/internal/daemon"
 )
 
-func runCmd() *cobra.Command {
+func runCmd(opts *options) *cobra.Command {
 	var logLevel string
 	cmd := &cobra.Command{
 		Use:   "run",
@@ -30,11 +30,11 @@ func runCmd() *cobra.Command {
 				return err
 			}
 
-			cfg, err := config.Load(configPath)
+			cfg, err := config.Load(opts.configPath)
 			if err != nil {
 				return fmt.Errorf("loading configuration: %w", err)
 			}
-			log.Info("configuration loaded", "path", configPath, "hash", cfg.Hash())
+			log.Info("configuration loaded", "path", opts.configPath, "hash", cfg.Hash())
 
 			// SIGINT and SIGTERM stop the daemon; SIGUSR1 is a manual trigger
 			// (SPEC.md §2 goal 4d), which is the one signal a support engineer
@@ -43,7 +43,7 @@ func runCmd() *cobra.Command {
 				syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
 
-			d, err := daemon.New(cfg, socketPath, log)
+			d, err := daemon.New(cfg, opts.socketPath, log)
 			if err != nil {
 				return err
 			}
@@ -71,7 +71,7 @@ func runCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&configPath, "config", "/etc/wake/wake.toml",
+	cmd.Flags().StringVar(&opts.configPath, "config", "/etc/wake/wake.toml",
 		"path to the configuration file")
 	cmd.Flags().StringVar(&logLevel, "log-level", "info", "debug, info, warn or error")
 	return cmd

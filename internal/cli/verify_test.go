@@ -24,7 +24,7 @@ import (
 func runVerify(t *testing.T, path string) (string, bool) {
 	t.Helper()
 
-	cmd := verifyConfigCmd()
+	cmd := verifyConfigCmd(&options{})
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)

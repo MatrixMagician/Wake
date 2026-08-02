@@ -69,7 +69,7 @@ then nothing.
 [[triggers.watched_process]]
 name      = "mstr-death"
 comm_glob = "mstr*"
-exit_code = "any-nonzero"
+exit_code = "nonzero"
 cooldown  = "5m"
 
 [triggers.oom]
@@ -96,9 +96,15 @@ Classes:    exec, exit, signal, oom, open, connect
 Triggers:
   mstr-death           process  cooldown 5m0s
   oom                  oom      cooldown 1m0s
+  signal               signal   cooldown 30s
+  unit-failed          unit     cooldown 30s
 
 Snapshots:  0 on disk, 0 B
+Config:     91779b9707e624fd2032a8092fc3f7afc3b76c679126705addd85f1e5429cb61
 ```
+
+Drops lead, deliberately: before any other number means anything, you need to
+know whether you are looking at the whole picture.
 
 **3. It dies.** Wake freezes the ring and writes a snapshot. The freeze is
 O(1); recording continues into a fresh ring while the frozen one is serialised,
@@ -106,14 +112,14 @@ so the aftermath is captured too.
 
 ```
 $ sudo wake snapshots list
-20260802-142007-process-mstr    4.2 MiB  184203 events  process: mstr was killed by SIGKILL
+20260802T142007Z-process                       4.2 MiB  184203 events  process: mstr was killed by SIGKILL
 ```
 
 **4. Read it.**
 
 ```bash
-$ sudo wake snapshots show 20260802-142007-process-mstr | jq .trigger
-$ sudo zstdcat /var/lib/wake/snapshots/20260802-*/events.jsonl.zst \
+$ sudo wake snapshots show 20260802T142007Z-process | jq .trigger
+$ sudo zstdcat /var/lib/wake/snapshots/20260802T*/events.jsonl.zst \
     | jq -c 'select(.class=="open" and .errno!=null)' | tail -20
 {"ts":"2026-08-02T14:20:06.881Z","class":"open","pid":4321,"comm":"mstr",
  "path":"/var/opt/mstr/cache/cube_4471.cub","flags":"O_RDWR","ret":-28,"errno":"ENOSPC"}

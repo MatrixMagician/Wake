@@ -12,15 +12,24 @@ import (
 	"github.com/MatrixMagician/wake/internal/version"
 )
 
-// Flags shared across subcommands.
-var (
+// options holds the flags shared across subcommands.
+//
+// These were package-level variables until a test built two command trees and
+// the race detector caught them sharing state. That was a latent bug rather
+// than a test artefact: package-level flag targets make the command tree a
+// singleton, which is exactly the sort of hidden global that makes a CLI
+// awkward to test and impossible to embed. One instance per tree, threaded
+// through the constructors, costs nothing and removes the class of problem.
+type options struct {
 	configPath string
 	socketPath string
 	jsonOutput bool
-)
+}
 
 // Root builds the command tree.
 func Root() *cobra.Command {
+	opts := &options{}
+
 	root := &cobra.Command{
 		Use:     "wake",
 		Short:   "eBPF incident flight recorder",
@@ -32,19 +41,19 @@ func Root() *cobra.Command {
 		SilenceUsage: true,
 	}
 
-	root.PersistentFlags().StringVar(&socketPath, "socket", ctl.SocketPath,
+	root.PersistentFlags().StringVar(&opts.socketPath, "socket", ctl.SocketPath,
 		"path to the daemon's control socket")
-	root.PersistentFlags().BoolVar(&jsonOutput, "json", false,
+	root.PersistentFlags().BoolVar(&opts.jsonOutput, "json", false,
 		"emit JSON rather than human-readable output")
 
 	root.AddCommand(
-		runCmd(),
-		statusCmd(),
-		triggerCmd(),
-		watchCmd(),
-		snapshotsCmd(),
-		doctorCmd(),
-		verifyConfigCmd(),
+		runCmd(opts),
+		statusCmd(opts),
+		triggerCmd(opts),
+		watchCmd(opts),
+		snapshotsCmd(opts),
+		doctorCmd(opts),
+		verifyConfigCmd(opts),
 	)
 	return root
 }

@@ -66,7 +66,7 @@ func remaining(t *testing.T, root string) []string {
 
 func runSnapshots(t *testing.T, args ...string) (string, bool) {
 	t.Helper()
-	cmd := snapshotsCmd()
+	cmd := snapshotsCmd(&options{})
 	var out strings.Builder
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
