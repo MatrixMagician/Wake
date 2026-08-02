@@ -54,7 +54,7 @@ sudo wake verify-config /etc/wake/wake.toml
 sudo systemctl enable --now wake
 ```
 
-Building needs Go ≥ 1.23, `clang` and `bpftool` (to dump the build host's BTF).
+Building needs Go ≥ 1.26, `clang` and `bpftool` (to dump the build host's BTF).
 The resulting binary needs none of them: the BPF objects are compiled at build
 time and embedded.
 

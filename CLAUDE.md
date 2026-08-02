@@ -17,7 +17,8 @@ sibling project **Sift** (`../Sift`) — changing the schema is a breaking chang
 
 ## Commands
 
-Go ≥ 1.23, BPF C compiled at build time with clang (bpf2go/CO-RE), objects embedded.
+Go ≥ 1.26 (see `go.mod`; the code uses `slog.DiscardHandler`, added in 1.24).
+BPF C is compiled at build time with clang (bpf2go/CO-RE) and embedded.
 
 ```bash
 make build              # go generate (bpf2go) + go build ./cmd/wake

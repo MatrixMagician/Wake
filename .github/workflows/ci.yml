@@ -23,7 +23,10 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.23"
+  # Must satisfy go.mod's own directive. `go-version-file` would be tidier, but
+  # naming it here keeps the required version visible in the workflow; the
+  # `go mod` check in the first job fails loudly if the two ever diverge.
+  GO_VERSION: "1.26"
 
 jobs:
   build-and-test:
@@ -41,6 +44,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang llvm linux-tools-common linux-tools-generic
+
+      # Catch the CI pin drifting below what go.mod requires, which otherwise
+      # surfaces as a confusing compile error in unrelated code.
+      - name: Check the toolchain satisfies go.mod
+        run: go list -m -f '{{.GoVersion}}' && go build ./...
 
       - name: Generate vmlinux.h and the BPF objects
         run: make generate
