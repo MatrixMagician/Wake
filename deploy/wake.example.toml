@@ -1,0 +1,145 @@
+# Wake configuration.
+#
+# Every knob Wake understands is documented here with its default value and
+# meaning. This file is validated by a test in internal/config that fails if
+# a knob exists in code but is undocumented here (or vice versa) — treat it
+# as the config reference, not just an example.
+#
+# Precedence: CLI flags > WAKE_* environment variables > this file >
+# built-in defaults. A missing or absent config file is not an error: a
+# zero-config `wake run` works safely out of the box.
+#
+# Validate a copy of this file with:
+#   wake verify-config /etc/wake/wake.toml
+
+# ---------------------------------------------------------------------------
+# scope — the in-kernel filter set deciding what is recorded at all. Scope is
+# enforced *before* an event crosses to userspace (CONTEXT.md, "Scope").
+# ---------------------------------------------------------------------------
+[scope]
+# Restrict recording to this cgroup subtree and its descendants. Must be an
+# absolute cgroupfs-style path. Empty means "the whole system".
+cgroup_subtree = ""
+
+# If non-empty, only processes whose comm (command name, e.g. "sshd")
+# matches one of these path.Match-style globs are recorded. comm_deny always
+# wins over comm_allow when both match. Empty lists mean no comm filtering.
+comm_allow = []
+comm_deny = []
+
+# ---------------------------------------------------------------------------
+# classes — independently enable or disable each event class (CONTEXT.md,
+# "Class"). Unknown class names are a validation error.
+# ---------------------------------------------------------------------------
+[classes]
+exec    = true
+exit    = true
+signal  = true
+oom     = true
+open    = true
+connect = true
+
+# ---------------------------------------------------------------------------
+# filters — narrows file (open) and network (connect) events further, on top
+# of [scope]. Applied in kernel, same as scope.
+# ---------------------------------------------------------------------------
+[filters]
+# Only record open events for paths starting with one of these absolute
+# prefixes. Empty means no path restriction.
+path_prefixes = []
+
+# Only record connect events to these destination ports. Each entry is a
+# single port ("443") or an inclusive range ("8000-9000"). Empty means no
+# port restriction.
+ports = []
+
+# Only record connect events to destinations within one of these networks
+# (CIDR notation, v4 or v6). Empty means no address restriction.
+cidrs = []
+
+# ---------------------------------------------------------------------------
+# triggers — the five trigger types from SPEC.md §2 goal 4. Each has its own
+# cooldown to prevent snapshot storms.
+# ---------------------------------------------------------------------------
+
+# Watched-process rules: a repeatable table, one per rule. Empty by default
+# — add one per process you want to watch specifically. A process matching
+# every non-empty glob in a rule, whose exit satisfies exit_code, fires that
+# rule's own independent cooldown.
+#
+# [[triggers.watched_process]]
+# name        = "mstr-iserver"           # required, unique; identifies the rule
+# comm_glob   = "MSTRSvr*"               # path.Match glob against comm; empty matches any
+# cgroup_glob = ""                       # glob against cgroup path; empty matches any
+# unit_glob   = "mstr-iserver.service"   # glob against systemd unit; empty matches any
+# exit_code   = "nonzero"                # "", "any", "signal", "nonzero", "N", or a
+#                                        # comparison like ">0", ">=1", "<0", "<=-1"
+# cooldown    = "1m"
+
+[triggers.oom]
+enabled  = true
+cooldown = "30s"
+
+[triggers.signal]
+enabled  = true
+# Signal names as in `kill -l`, without further abbreviation.
+signals  = ["SIGSEGV", "SIGABRT", "SIGBUS", "SIGILL", "SIGFPE"]
+cooldown = "30s"
+
+# Manual triggers: `wake trigger`, SIGUSR1 to the daemon, or a request over
+# the control socket. No globs — any operator request fires it.
+[triggers.manual]
+enabled  = true
+cooldown = "5s"
+
+[triggers.unit_failed]
+enabled  = true
+# Restrict to these systemd unit name globs; empty means any unit entering
+# the "failed" state fires this trigger.
+units    = []
+cooldown = "30s"
+
+# ---------------------------------------------------------------------------
+# ring — bounds the in-memory event buffer by time window, event count and
+# memory budget simultaneously; whichever binds first wins (CONTEXT.md,
+# "Ring"). At least one bound must be positive.
+# ---------------------------------------------------------------------------
+[ring]
+window              = "5m"
+max_events           = 200000
+memory_budget_bytes = 134217728   # 128 MiB
+
+# ---------------------------------------------------------------------------
+# snapshot — where snapshots are written and how long they are kept
+# (CONTEXT.md, "Snapshot"). Snapshot directories are always created 0700.
+# ---------------------------------------------------------------------------
+[snapshot]
+dir             = "/var/lib/wake/snapshots"
+retention_count = 20           # keep at most this many snapshots; 0 = unlimited
+retention_bytes = 1073741824   # keep at most this much total size (1 GiB); 0 = unlimited
+
+# Take an implicit snapshot when the daemon stops cleanly. Opt-in per
+# SPEC.md §9 question 6.
+on_shutdown = false
+
+# ---------------------------------------------------------------------------
+# redaction — argv/path masking applied before serialisation, never after
+# (CONTEXT.md, "Redaction"; CLAUDE.md hard privacy line). Masked matches are
+# replaced with a marker naming the rule that fired, e.g.
+# "[REDACTED:aws-key]", so a reader knows redaction happened.
+# ---------------------------------------------------------------------------
+[redaction]
+# Additionally mask the username segment of "/home/<user>" paths.
+mask_home_usernames = false
+
+# Apply internal/redact's built-in rules for common secrets (AWS access
+# keys, bearer tokens, "--password="/"-p " style flags, private key paths)
+# in addition to any rules below.
+use_default_rules = true
+
+# Custom rules: a repeatable table, one per rule. Empty by default.
+#
+# [[redaction.rules]]
+# name    = "internal-token"       # required, unique; used in the [REDACTED:name] marker
+# pattern = "tok_[A-Za-z0-9]{32}"  # RE2 regular expression; every match is replaced
+# targets = ["argv"]               # any of "argv", "path", "filename", or "all" (default)

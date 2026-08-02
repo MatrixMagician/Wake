@@ -1,0 +1,89 @@
+[Unit]
+# Wake — eBPF incident flight recorder.
+#
+# Sandboxing and BPF interact non-obviously. Every loosening below is
+# deliberate and explained, because the next person to harden this unit will
+# otherwise re-tighten something and spend an afternoon on the resulting
+# EPERM. See docs/decisions/0003-systemd-sandboxing.md.
+Description=Wake incident flight recorder
+Documentation=https://github.com/MatrixMagician/Wake
+After=local-fs.target
+# The unit-failure trigger subscribes to systemd's manager signals over the
+# system bus, so the bus must be up first.
+Wants=dbus.socket
+After=dbus.socket
+
+[Service]
+Type=notify
+NotifyAccess=main
+ExecStart=/usr/bin/wake run --config /etc/wake/wake.toml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5s
+
+# --- Privileges -------------------------------------------------------------
+# Wake does not need full root. CAP_BPF and CAP_PERFMON load and attach the
+# programs; CAP_SYS_RESOURCE raises RLIMIT_MEMLOCK for older kernels;
+# CAP_DAC_READ_SEARCH reads /proc of processes owned by other users during a
+# snapshot scrape.
+User=root
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE CAP_DAC_READ_SEARCH
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE CAP_DAC_READ_SEARCH
+NoNewPrivileges=yes
+
+# --- Filesystem -------------------------------------------------------------
+ProtectSystem=strict
+ProtectHome=yes
+StateDirectory=wake
+StateDirectoryMode=0700
+RuntimeDirectory=wake
+RuntimeDirectoryMode=0700
+ReadWritePaths=/var/lib/wake
+PrivateTmp=yes
+
+# ProtectKernelTunables must stay off: reading /sys/kernel/btf/vmlinux and the
+# tracefs event format files is how Wake verifies what it is binding to, and
+# both are inside the tree this option makes read-only-and-hidden.
+ProtectKernelTunables=no
+# ProtectKernelModules is safe: Wake never loads a module, by design.
+ProtectKernelModules=yes
+# BPF programs are not kernel logs; this one costs nothing.
+ProtectKernelLogs=yes
+
+# --- Process and namespace isolation ----------------------------------------
+# ProtectProc must stay at "default": a flight recorder that cannot read the
+# /proc of the process that just died cannot produce the scrape that is half
+# the value of a snapshot.
+ProtectProc=default
+ProcSubset=all
+PrivateUsers=no
+# RestrictNamespaces=yes is compatible: Wake creates no namespaces. It does
+# *observe* processes in other namespaces, which this does not prevent.
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+# MemoryDenyWriteExecute must stay off: the BPF loader maps the program images
+# writable before handing them to the verifier.
+MemoryDenyWriteExecute=no
+
+# --- System calls -----------------------------------------------------------
+# @system-service excludes bpf(2) and perf_event_open(2), so both are added
+# back explicitly. Removing these two lines is the single most common way to
+# break this unit.
+SystemCallFilter=@system-service bpf perf_event_open
+SystemCallFilter=~@mount @swap @reboot @obsolete
+SystemCallArchitectures=native
+
+# --- Resources --------------------------------------------------------------
+# The ring is the only steady-state memory consumer; this cap is a backstop
+# well above the SPEC's 128 MiB budget, so that a runaway is contained without
+# the recorder being OOM-killed during the very incident it is recording.
+MemoryMax=512M
+LimitMEMLOCK=infinity
+# Wake should be the last thing the OOM killer considers: it is the witness.
+OOMScoreAdjust=-500
+
+[Install]
+WantedBy=multi-user.target
