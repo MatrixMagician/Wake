@@ -30,7 +30,7 @@ jobs:
           # package for the Azure kernel they boot, which does not exist. The
           # Makefile finds the real binary. There is no standalone bpftool
           # package on noble: apt reports it as virtual and uninstallable.
-          sudo apt-get install -y clang llvm linux-tools-common linux-tools-generic
+          sudo apt-get install -y clang llvm libbpf-dev zstd linux-tools-common linux-tools-generic
 
       # Never ship a release that has not passed the gates. A flight recorder
       # with a data race is worse than no flight recorder.

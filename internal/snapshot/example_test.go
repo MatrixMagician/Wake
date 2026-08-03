@@ -23,6 +23,7 @@ func TestExampleConsumerReadsTheReferenceFixture(t *testing.T) {
 	if err != nil {
 		t.Skip("python3 not available; the example consumer cannot be exercised")
 	}
+	requireZstdDecoder(t, python)
 
 	script := filepath.Join("..", "..", "examples", "conformance", "conformance.py")
 	fixture := filepath.Join("..", "..", "testdata", "fixtures", "reference-snapshot")
@@ -52,4 +53,27 @@ func TestExampleConsumerReadsTheReferenceFixture(t *testing.T) {
 			t.Errorf("%s — expected %q in the output:\n%s", want.why, want.marker, got)
 		}
 	}
+}
+
+// requireZstdDecoder skips rather than fails when the host has no way to
+// decompress the events stream. The example consumer follows the format
+// document's advice to use "any standard zstd decoder", which in Python means
+// the zstandard module if installed and the zstdcat binary otherwise; a host
+// with neither cannot exercise the contract and has not disproved it.
+//
+// This is a skip and not a failure because the missing decoder is a property
+// of the machine, not of Wake. It is checked explicitly, rather than left to
+// surface as a confusing FileNotFoundError traceback from inside the script,
+// because that traceback cost a CI debugging cycle.
+func requireZstdDecoder(t *testing.T, python string) {
+	t.Helper()
+
+	if err := exec.Command(python, "-c", "import zstandard").Run(); err == nil {
+		return
+	}
+	if _, err := exec.LookPath("zstdcat"); err == nil {
+		return
+	}
+	t.Skip("no zstd decoder available (neither the python zstandard module " +
+		"nor the zstdcat binary); the example consumer cannot decompress events")
 }
