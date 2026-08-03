@@ -53,8 +53,11 @@ on the reference box (Fedora 44, kernel 7.1.5-201.fc44.x86_64). Observed:
   and produced a snapshot, proving the bus subscription survives the sandbox.
 - `Type=notify` readiness was accepted; systemd reported the unit active rather
   than timing out.
-- `systemd-analyze security wake.service` scores **3.8 (OK)**. Its remaining
-  complaints are the settings listed above, each of which is load-bearing.
+- `systemd-analyze security wake.service` scored **3.8 (OK)** at the time of
+  that run. Its remaining complaints are the settings listed above, each of
+  which is load-bearing. (Adding `CAP_SYS_PTRACE` for the reason given below
+  moved this to **4.1 (OK)** — a worse score for a strictly more useful tool,
+  which is why the score is recorded rather than chased.)
 
 `UMask=0077` was added as a result of that run: `systemd-analyze` flagged the
 default, and while the snapshot writer chmods 0700 explicitly, defence in depth
@@ -71,3 +74,46 @@ costs nothing here.
 - SELinux is orthogonal to all of the above. `wake doctor` reports whether
   SELinux is enforcing and points at `ausearch -m avc`, because a denial there
   looks identical to a capability problem from the daemon's side.
+
+## What the second run found (2026-08-03)
+
+The run recorded above exercised the paths that *fail loudly*: load, attach,
+control socket, snapshot write, bus subscription, readiness. It missed two
+failures that look exactly like success, both found only by installing the unit
+and then reading what came out of it.
+
+**1. Blank fd listings — a missing capability.** `readlink()` on a
+`/proc/<pid>/fd/` entry is gated on `PTRACE_MODE_READ`, not on file
+permissions, so `CAP_DAC_READ_SEARCH` is not sufficient for it. Without
+`CAP_SYS_PTRACE` the scrape still succeeded, `proc/fd_listing.txt` was still
+written, and every fd was listed — with an empty target. Nothing errored; the
+evidence was simply absent. Isolated by running the same `readlink` under
+`systemd-run` with the unit's exact capability set, which failed with `EACCES`,
+and again with `CAP_SYS_PTRACE` added, which succeeded. The capability is now
+granted, and `wake doctor` has a check that reports the denial with its remedy.
+
+The code was also at fault and is fixed: it rendered *any* failed `readlink` as
+an empty string, conflating "fd closed mid-listing" (benign, expected, the
+process is racing us) with "permission denied" (a misconfiguration). Both are
+now in-band sentinels, so this can never again be invisible in a snapshot.
+
+**2. `systemctl reload` stopped the recorder.** `ExecReload=/bin/kill -HUP
+$MAINPID` was declared, but the daemon never handled `SIGHUP`, so the default
+disposition applied and it terminated. systemd logged `Reloaded wake.service
+successfully` and reported a clean exit. A flight recorder that silently stops
+on a routine administrative action is the worst failure mode this project has.
+
+`ExecReload=` is removed rather than implemented: Wake does not reconfigure in
+place, because every snapshot records the config hash it was taken under and
+swapping config beneath a live ring would make that record a lie. `reload` now
+fails with "not applicable" instead of appearing to work. `SIGHUP` is
+additionally caught and ignored with a warning, so an inherited hangup from any
+other source cannot kill the recorder either.
+
+Both are pinned by tests over the unit file itself
+(`internal/cli/unitfile_test.go`), since nothing else type-checks a `.service`.
+No SELinux denials were observed on the reference box in either run.
+
+The general lesson: verifying a sandbox by checking that the daemon *starts* is
+not verification. The failures worth finding are the ones where everything
+reports success and the evidence is quietly missing.

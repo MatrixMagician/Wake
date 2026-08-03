@@ -17,7 +17,11 @@ After=dbus.socket
 Type=notify
 NotifyAccess=main
 ExecStart=/usr/bin/wake run --config /etc/wake/wake.toml
-ExecReload=/bin/kill -HUP $MAINPID
+# No ExecReload=. Wake does not reconfigure in place: every snapshot records
+# the config hash it was taken under, and swapping config beneath a live ring
+# would make that record a lie. `systemctl reload` therefore reports "not
+# supported" rather than appearing to succeed. Restart to apply changes --
+# and note that a restart loses the ring, which is the honest trade.
 Restart=on-failure
 RestartSec=5s
 
@@ -25,10 +29,14 @@ RestartSec=5s
 # Wake does not need full root. CAP_BPF and CAP_PERFMON load and attach the
 # programs; CAP_SYS_RESOURCE raises RLIMIT_MEMLOCK for older kernels;
 # CAP_DAC_READ_SEARCH reads /proc of processes owned by other users during a
-# snapshot scrape.
+# snapshot scrape; CAP_SYS_PTRACE is what makes the fd listing in that scrape
+# non-empty, because readlink() on /proc/<pid>/fd/* is gated on
+# PTRACE_MODE_READ and not on file permissions. Without it the scrape still
+# succeeds and still writes fd_listing.txt -- with every target blank. This
+# was found by running the unit, not by reading the code.
 User=root
-AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE CAP_DAC_READ_SEARCH
-CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE CAP_DAC_READ_SEARCH
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_RESOURCE CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
 NoNewPrivileges=yes
 
 # --- Filesystem -------------------------------------------------------------

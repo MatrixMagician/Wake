@@ -10,10 +10,14 @@
 package doctor
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 )
@@ -55,7 +59,73 @@ func Run() Report {
 		checkUnprivilegedBPFSetting(),
 		checkSELinux(),
 		checkSnapshotDir(),
+		checkProcFDReadlink(),
 	}}
+}
+
+// checkProcFDReadlink catches a failure that is invisible until you read a
+// snapshot: readlink() on /proc/<pid>/fd/* is gated on PTRACE_MODE_READ, not
+// on file permissions, so without CAP_SYS_PTRACE the fd listing in every
+// snapshot is written successfully and is entirely blank. It is not fatal --
+// the ring history is the point of a snapshot and is unaffected -- but it
+// silently removes half of the proc scrape's value, so it is worth a warning.
+func checkProcFDReadlink() Result {
+	const name = "proc fd listing"
+
+	pid, ok := foreignPID()
+	if !ok {
+		// Nothing owned by another user to test against (a container, most
+		// likely). Saying so is more honest than reporting a pass.
+		return Result{
+			Name: name, OK: true,
+			Detail: "not checked: no process owned by another user to test against",
+		}
+	}
+
+	if _, err := os.Readlink(fmt.Sprintf("/proc/%d/fd/1", pid)); err != nil {
+		if errors.Is(err, fs.ErrPermission) {
+			return Result{
+				Name: name, OK: false, Fatal: false,
+				Detail: fmt.Sprintf("cannot read fd targets of pid %d owned by another user", pid),
+				Remedy: "Grant CAP_SYS_PTRACE. Snapshots will still be written and the " +
+					"ring history is unaffected, but every fd in proc/fd_listing.txt " +
+					"will read [permission denied] instead of its target. The shipped " +
+					"unit at deploy/wake.service grants it.",
+			}
+		}
+		// The process exited between choosing it and reading it, or some
+		// other transient. Not evidence of anything.
+		return Result{Name: name, OK: true, Detail: "not checked: " + err.Error()}
+	}
+
+	return Result{Name: name, OK: true, Detail: "fd targets readable across users"}
+}
+
+// foreignPID returns a live pid owned by a different uid, which is the only
+// case that exercises the ptrace gate: a process's own fds are always
+// readable regardless of capabilities.
+func foreignPID() (int, bool) {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return 0, false
+	}
+	self := os.Geteuid()
+	for _, e := range entries {
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		st, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || int(st.Uid) == self {
+			continue
+		}
+		return pid, true
+	}
+	return 0, false
 }
 
 func checkKernelVersion() Result {

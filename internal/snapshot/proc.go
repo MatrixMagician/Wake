@@ -1,11 +1,24 @@
 package snapshot
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
+)
+
+// Sentinel fd targets. An fd whose target could not be read is still listed
+// -- the fd existing is itself evidence -- but the reason is stated in-band
+// so that an operator reading fd_listing.txt can tell a racing process apart
+// from a sandbox that is denying the readlink. They are bracketed so they
+// cannot be confused with a real path, which is never bracketed.
+const (
+	fdTargetClosed     = "[closed]"
+	fdTargetDenied     = "[permission denied: needs CAP_SYS_PTRACE]"
+	fdTargetUnreadable = "[unreadable]"
 )
 
 // ProcCaptureSummary records whether/how a proc/ scrape went, so a reader of
@@ -94,13 +107,34 @@ func (s *OSProcSource) Scrape(pid int32) (map[string][]byte, map[string]string, 
 		for _, e := range entries {
 			target, err := os.Readlink(pidDir + "/fd/" + e.Name())
 			if err != nil {
-				target = "" // fd closed mid-listing; record the name with no target rather than dropping it
+				target = fdTargetForError(err)
 			}
 			fds[e.Name()] = target
 		}
 	}
 
 	return files, fds, true, nil
+}
+
+// fdTargetForError classifies a failed readlink of /proc/<pid>/fd/<n>. Two
+// very different failures land here and must not be conflated. ENOENT is
+// benign: the fd was closed between the readdir and the readlink, since the
+// process is racing the kernel rather than paused for us. EACCES is a
+// misconfiguration: readlink() on /proc/<pid>/fd/* is gated on
+// PTRACE_MODE_READ, so without CAP_SYS_PTRACE every target comes back denied
+// and the listing is uselessly blank while still looking like a successful
+// scrape. That happened for real under the shipped systemd unit, so the
+// distinction is written into the file the operator will read rather than
+// swallowed.
+func fdTargetForError(err error) string {
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return fdTargetClosed
+	case errors.Is(err, fs.ErrPermission):
+		return fdTargetDenied
+	default:
+		return fdTargetUnreadable
+	}
 }
 
 // writeProcDir writes the fixed-shape proc/ directory for one process

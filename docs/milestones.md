@@ -83,7 +83,7 @@ is stronger than the SPEC requires: a secret that never enters the ring cannot
 leak through a `wake watch` stream either, and there is one code path rather
 than two.
 
-## M6 — Hardening + packaging + release ◐
+## M6 — Hardening + packaging + release ✔
 
 | Criterion | Status |
 |---|---|
@@ -91,7 +91,7 @@ than two.
 | Documented what had to be loosened and why | ✔ `docs/decisions/0003-systemd-sandboxing.md` — five settings, each with its reason |
 | `doctor` detects and explains known failure modes | ✔ including the `unprivileged_bpf_disabled` red herring and an SELinux `ausearch` hint |
 | README with a worked incident walkthrough | ✔ `README.md` |
-| Daemon runs under the unit, integration-verified | ◐ the unit is written and its sandboxing reasoned through, but it has not been installed and exercised on this box |
+| Daemon runs under the unit, integration-verified | ✔ installed to `/etc/systemd/system` and exercised on Fedora 44 / kernel 7.1.5. This found two failures that reasoning had not: a missing `CAP_SYS_PTRACE` that silently blanked every fd target in every snapshot, and an `ExecReload` that stopped the recorder while systemd reported success. Both fixed, both pinned by `internal/cli/unitfile_test.go`, both written up in ADR 0003 |
 | goreleaser static binaries | ✔ `.goreleaser.yaml`; verified with a snapshot build producing static amd64 and arm64 binaries plus RPM and DEB packages. The extracted binary was run: `--version` stamped, `doctor` passed, and it recorded and snapshotted correctly. |
 | CI | ✔ `.github/workflows/ci.yml` (build, unit tests with `-race`, decoder fuzzing, lint, integration on a live kernel, smoke test, informational perf) and `release.yml` (gated on the tests passing) |
 
@@ -110,11 +110,19 @@ than two.
 
 ## Outstanding
 
-1. **Install and run under the shipped unit.** The sandboxing decisions in ADR
-   0003 were derived from how BPF and systemd interact, not from having watched
-   this unit fail and be fixed. Until the daemon has run under it, that ADR is
-   reasoning rather than evidence.
-2. **goreleaser configuration** for tagged static builds.
+Nothing blocking. Every milestone in SPEC.md §7 is complete and evidenced.
+
+Deliberately deferred, each with a recorded decision rather than an omission:
+
+1. **UDP connect capture** — `docs/decisions/0004-udp-deferred.md`.
+2. **In-kernel CIDR filtering** — `docs/decisions/0002-cidr-filtering-in-userspace.md`.
+
+Worth doing when convenient:
+
+3. **Exercise the unit on a non-systemd-259, non-Fedora host.** The sandbox is
+   now evidenced on one distribution and one kernel. The two bugs it surfaced
+   were both distribution-independent, but that is an argument for testing more
+   hosts, not fewer.
 
 ## Open questions
 

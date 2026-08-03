@@ -422,6 +422,25 @@ the contents of any of these targets. It is exactly what `readlink()` on
 points to, nothing more. A target being a regular file path tells you the process
 had that file open; it tells you nothing about what is in it.
 
+#### Unreadable targets
+
+An fd whose target could not be read is still listed, because the descriptor
+existing is itself evidence. The reason appears in place of the target, as one
+of these bracketed sentinels:
+
+| Sentinel | Meaning |
+|---|---|
+| `[closed]` | The descriptor was closed between the directory being listed and the target being read. The process races the scrape rather than being paused for it, so this is expected and benign. |
+| `[permission denied: needs CAP_SYS_PTRACE]` | Wake was not permitted to read the target. `readlink()` on `/proc/<pid>/fd/<fd>` is gated on `PTRACE_MODE_READ`, not on file permissions, so this indicates Wake is running without `CAP_SYS_PTRACE` — a misconfiguration, not a property of the incident. |
+| `[unreadable]` | The read failed for some other reason. |
+
+Sentinels are bracketed so they cannot be confused with a real target, which is
+never bracketed. A consumer that displays targets verbatim needs no special
+handling; a consumer that resolves them as paths **must** skip bracketed
+values. New sentinels may be added in a future version without a schema bump,
+so treat any unrecognised bracketed value as "target unavailable" rather than
+as a path.
+
 ---
 
 ## 6. Consumer obligations

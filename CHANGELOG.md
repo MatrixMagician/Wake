@@ -42,6 +42,34 @@ regenerating.
 
 ## [Unreleased]
 
+### Fixed
+
+- `proc/fd_listing.txt` no longer renders unreadable fd targets as a blank
+  string. A failed `readlink()` is now one of the bracketed sentinels
+  `[closed]`, `[permission denied: needs CAP_SYS_PTRACE]` or `[unreadable]`,
+  documented in `docs/snapshot-format.md` §5.1. This does **not** bump
+  `schema_version`: the field's type and meaning are unchanged, and a consumer
+  that displays targets verbatim is unaffected. A consumer that resolves
+  targets as paths already had to cope with a blank value and must now skip
+  bracketed ones.
+- The shipped systemd unit now grants `CAP_SYS_PTRACE`. Without it every fd
+  target in every snapshot was silently blank, because `readlink()` on
+  `/proc/<pid>/fd/<fd>` is gated on `PTRACE_MODE_READ` rather than on file
+  permissions. Found by running the unit, not by reading it.
+- The unit no longer declares `ExecReload=/bin/kill -HUP $MAINPID`, which
+  **stopped the recorder**: Wake did not handle `SIGHUP`, so the default
+  disposition terminated it while systemd reported a successful reload. Wake
+  does not reconfigure in place, so `systemctl reload` now correctly fails as
+  not applicable. `SIGHUP` is additionally caught and ignored with a warning so
+  that an inherited hangup from any source cannot stop a recording.
+
+### Added
+
+- `wake doctor` check for the `CAP_SYS_PTRACE` fd-listing gate, reporting the
+  denial and its remedy rather than leaving it to be discovered in a snapshot.
+- `internal/cli/unitfile_test.go` pins the shipped unit's capability set and the
+  absence of `ExecReload=`, since nothing else type-checks a `.service` file.
+
 ### Added
 
 - Snapshot consumption contract (SPEC.md §6): who the consumer is, what Wake

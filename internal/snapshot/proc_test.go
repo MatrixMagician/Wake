@@ -1,8 +1,12 @@
 package snapshot
 
 import (
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -105,5 +109,34 @@ func TestWriteProcDir_SummaryReflectsFiles(t *testing.T) {
 	}
 	if len(summary.Files) != 1 || summary.Files[0] != "status" {
 		t.Errorf("summary.Files = %v, want [status]", summary.Files)
+	}
+}
+
+// TestFDTargetForError pins the distinction that the shipped systemd unit
+// got wrong: a denied readlink and a closed fd are not the same event, and
+// neither may be rendered as a blank target. A blank target is what made the
+// missing CAP_SYS_PTRACE invisible in a real snapshot -- fd_listing.txt was
+// written, was the right length, and said nothing.
+func TestFDTargetForError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"closed mid-listing", fs.ErrNotExist, fdTargetClosed},
+		{"denied by ptrace gate", fs.ErrPermission, fdTargetDenied},
+		{"wrapped denial still classified", fmt.Errorf("readlink: %w", fs.ErrPermission), fdTargetDenied},
+		{"anything else", errors.New("some other failure"), fdTargetUnreadable},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := fdTargetForError(tt.err)
+			if got != tt.want {
+				t.Errorf("fdTargetForError(%v) = %q, want %q", tt.err, got, tt.want)
+			}
+			if strings.TrimSpace(got) == "" {
+				t.Errorf("fdTargetForError(%v) returned a blank target, which is exactly the failure this guards", tt.err)
+			}
+		})
 	}
 }

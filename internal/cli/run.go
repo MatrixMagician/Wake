@@ -51,6 +51,30 @@ func runCmd(opts *options) *cobra.Command {
 			usr1 := make(chan os.Signal, 1)
 			signal.Notify(usr1, syscall.SIGUSR1)
 			defer signal.Stop(usr1)
+
+			// SIGHUP is explicitly ignored rather than left at its default.
+			// The default action for an unhandled SIGHUP is to terminate, so
+			// a flight recorder that inherits a hangup -- from a closing
+			// terminal, or from an ExecReload= that assumes the daemon
+			// reloads -- would silently stop recording at exactly the moment
+			// it is most wanted, with systemd reporting a clean exit. Wake
+			// does not support reconfiguration in place: the config hash is
+			// captured per snapshot and swapping it under a live ring would
+			// make that record a lie. Restart the unit to change config.
+			hup := make(chan os.Signal, 1)
+			signal.Notify(hup, syscall.SIGHUP)
+			defer signal.Stop(hup)
+			go func() {
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-hup:
+						log.Warn("SIGHUP received and ignored; Wake does not reload in place, restart the service to apply configuration changes")
+					}
+				}
+			}()
+
 			go func() {
 				for {
 					select {
