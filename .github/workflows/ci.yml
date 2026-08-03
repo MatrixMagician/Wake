@@ -100,9 +100,15 @@ jobs:
           sudo apt-get install -y clang llvm libbpf-dev zstd linux-tools-common linux-tools-generic
       - name: Generate
         run: make generate
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+
+      # Installed from source with this repo's toolchain rather than via
+      # golangci-lint-action, whose prebuilt binaries are built with an older
+      # Go than go.mod targets. golangci-lint refuses to run in that case, so
+      # the action failed with a config-load error and never linted anything.
+      - name: Install golangci-lint
+        run: make tools-lint
+      - name: Lint
+        run: make lint
 
   integration:
     name: Integration tests (live kernel)

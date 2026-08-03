@@ -20,7 +20,7 @@ PKG     := github.com/MatrixMagician/wake
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X $(PKG)/internal/version.Version=$(VERSION)
 
-.PHONY: all build generate test integration smoke lint fmt perf fixture clean tools
+.PHONY: all build generate test integration smoke lint fmt perf fixture clean tools tools-lint
 
 all: build
 
@@ -71,10 +71,18 @@ fixture:
 	@echo "Regenerated. If schema_version changed, add a CHANGELOG.md entry."
 
 ## lint: vet plus golangci-lint when available.
+##
+## golangci-lint refuses to run when the Go release it was *built with* is
+## older than the go directive in go.mod, so a prebuilt binary lags this module
+## and fails with a config-load error rather than a lint finding. Installing it
+## with this repo's toolchain avoids that entirely.
+GOLANGCI_VERSION ?= v2.12.2
+GOLANGCI ?= $(shell command -v golangci-lint 2>/dev/null || ls $$HOME/go/bin/golangci-lint 2>/dev/null)
+
 lint:
 	$(GO) vet ./...
-	@command -v golangci-lint 2>/dev/null || command -v $$HOME/go/bin/golangci-lint >/dev/null 2>&1 && golangci-lint run || \
-		echo "golangci-lint not installed; skipping (make tools)"
+	@test -n "$(GOLANGCI)" || { echo "golangci-lint not installed; skipping (make tools)"; exit 0; }
+	@test -z "$(GOLANGCI)" || $(GOLANGCI) run ./...
 
 fmt:
 	$(GO) fmt ./...
@@ -84,9 +92,15 @@ fmt:
 perf: build
 	sudo ./testdata/loadgen/measure.sh
 
+## tools-lint: just the linter, for CI, which does not need bpf2go separately.
+tools-lint:
+	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
+
 tools:
 	$(GO) install github.com/cilium/ebpf/cmd/bpf2go@latest
-	$(GO) install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	# The /v2 module path and a pinned version: v1's path still resolves and
+	# silently installs a binary that cannot read a v2 .golangci.yml.
+	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
 
 clean:
 	rm -f $(BINARY)
