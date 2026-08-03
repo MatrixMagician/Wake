@@ -42,6 +42,13 @@ regenerating.
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-08-03
+
+First release. Wake records exec, exit, signal, OOM, open and connect events
+into a bounded in-memory ring, and writes a self-contained snapshot when a
+trigger fires. Snapshot schema version 1; see the schema history above for the
+compatibility promise that number carries.
+
 ### Fixed
 
 - `proc/fd_listing.txt` no longer renders unreadable fd targets as a blank
@@ -69,6 +76,26 @@ regenerating.
   denial and its remedy rather than leaving it to be discovered in a snapshot.
 - `internal/cli/unitfile_test.go` pins the shipped unit's capability set and the
   absence of `ExecReload=`, since nothing else type-checks a `.service` file.
+
+### Infrastructure
+
+CI had never passed on this repository. Four independent faults, none in Wake
+itself, each hiding the next:
+
+- `linux-tools-generic` does not put a usable `bpftool` on `PATH`; it installs
+  a wrapper demanding a kernel package the runners do not have. The Makefile
+  now detects a `bpftool` that actually runs and falls back to the real binary
+  under `/usr/lib/linux-tools/`, overridable with `BPFTOOL=`.
+- `libbpf-dev` and `zstd` were never installed, so the BPF sources could not
+  find `bpf/bpf_helpers.h` and the conformance example could not decompress.
+- `golangci-lint-action`'s prebuilt binary is built with an older Go than
+  `go.mod` targets, which makes golangci-lint refuse to start; the lint job had
+  never linted anything. It is now installed from source at a pinned version.
+  Zero issues once it ran.
+- `make lint` mixed `||` and `&&` such that a missing linter reported success.
+
+`make tools` also installed golangci-lint from the v1 module path, yielding a
+binary that cannot read this repo's v2 config.
 
 ### Added
 
