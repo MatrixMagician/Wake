@@ -24,7 +24,12 @@ jobs:
       - name: Install the BPF toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm linux-tools-common linux-tools-generic
+          # bpftool comes from the standalone package, not linux-tools-generic:
+          # the latter installs a wrapper that dispatches to a
+          # linux-tools-$(uname -r) package which does not exist for the
+          # runners' Azure kernels, so bpftool "installs" and then refuses to
+          # run. This cost a green CI badge for the project's whole history.
+          sudo apt-get install -y clang llvm bpftool
 
       # Never ship a release that has not passed the gates. A flight recorder
       # with a data race is worse than no flight recorder.

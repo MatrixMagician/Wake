@@ -43,15 +43,22 @@ jobs:
       - name: Install the BPF toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm linux-tools-common linux-tools-generic
-
-      # Catch the CI pin drifting below what go.mod requires, which otherwise
-      # surfaces as a confusing compile error in unrelated code.
-      - name: Check the toolchain satisfies go.mod
-        run: go list -m -f '{{.GoVersion}}' && go build ./...
+          # bpftool comes from the standalone package, not linux-tools-generic:
+          # the latter installs a wrapper that dispatches to a
+          # linux-tools-$(uname -r) package which does not exist for the
+          # runners' Azure kernels, so bpftool "installs" and then refuses to
+          # run. This cost a green CI badge for the project's whole history.
+          sudo apt-get install -y clang llvm bpftool
 
       - name: Generate vmlinux.h and the BPF objects
         run: make generate
+
+      # Catch the CI pin drifting below what go.mod requires, which otherwise
+      # surfaces as a confusing compile error in unrelated code. This must run
+      # *after* generate: the loader embeds the compiled BPF objects, so a
+      # build before they exist fails on the embed rather than on the version.
+      - name: Check the toolchain satisfies go.mod
+        run: go list -m -f '{{.GoVersion}}' && go build ./...
 
       - name: Build
         run: make build
@@ -83,7 +90,12 @@ jobs:
       - name: Install the BPF toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm linux-tools-common linux-tools-generic
+          # bpftool comes from the standalone package, not linux-tools-generic:
+          # the latter installs a wrapper that dispatches to a
+          # linux-tools-$(uname -r) package which does not exist for the
+          # runners' Azure kernels, so bpftool "installs" and then refuses to
+          # run. This cost a green CI badge for the project's whole history.
+          sudo apt-get install -y clang llvm bpftool
       - name: Generate
         run: make generate
       - uses: golangci/golangci-lint-action@v6
@@ -103,7 +115,12 @@ jobs:
       - name: Install the BPF toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm linux-tools-common linux-tools-generic
+          # bpftool comes from the standalone package, not linux-tools-generic:
+          # the latter installs a wrapper that dispatches to a
+          # linux-tools-$(uname -r) package which does not exist for the
+          # runners' Azure kernels, so bpftool "installs" and then refuses to
+          # run. This cost a green CI badge for the project's whole history.
+          sudo apt-get install -y clang llvm bpftool
 
       # Fail early and legibly rather than deep inside the verifier.
       - name: Check the runner kernel can host Wake
@@ -145,7 +162,12 @@ jobs:
       - name: Install the BPF toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm linux-tools-common linux-tools-generic bc
+          # bpftool comes from the standalone package, not linux-tools-generic:
+          # the latter installs a wrapper that dispatches to a
+          # linux-tools-$(uname -r) package which does not exist for the
+          # runners' Azure kernels, so bpftool "installs" and then refuses to
+          # run. This cost a green CI badge for the project's whole history.
+          sudo apt-get install -y clang llvm bpftool bc
       - name: Build
         run: make build
       - name: Measure
