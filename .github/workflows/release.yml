@@ -24,12 +24,13 @@ jobs:
       - name: Install the BPF toolchain
         run: |
           sudo apt-get update
-          # bpftool comes from the standalone package, not linux-tools-generic:
-          # the latter installs a wrapper that dispatches to a
-          # linux-tools-$(uname -r) package which does not exist for the
-          # runners' Azure kernels, so bpftool "installs" and then refuses to
-          # run. This cost a green CI badge for the project's whole history.
-          sudo apt-get install -y clang llvm bpftool
+          # linux-tools-generic ships the real bpftool under
+          # /usr/lib/linux-tools/<kernel>/; the PATH wrapper it also installs
+          # is useless on these runners because it demands a linux-tools
+          # package for the Azure kernel they boot, which does not exist. The
+          # Makefile finds the real binary. There is no standalone bpftool
+          # package on noble: apt reports it as virtual and uninstallable.
+          sudo apt-get install -y clang llvm linux-tools-common linux-tools-generic
 
       # Never ship a release that has not passed the gates. A flight recorder
       # with a data race is worse than no flight recorder.

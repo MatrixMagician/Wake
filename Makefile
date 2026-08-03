@@ -5,6 +5,16 @@
 
 GO      ?= go
 CLANG   ?= clang
+
+# bpftool is genuinely awkward to locate. Debian and Ubuntu ship the real
+# binary under /usr/lib/linux-tools/<kernel>/, and put a wrapper on PATH that
+# dispatches to the linux-tools package matching the *running* kernel -- which,
+# on a cloud VM booting a vendor kernel, is frequently not installed. The
+# wrapper then exits non-zero with a "you may want to install" notice, so
+# bpftool looks present and is unusable. That is exactly what broke CI here.
+# Prefer a PATH binary that actually runs, else fall back to a real one on disk.
+BPFTOOL ?= $(shell command -v bpftool >/dev/null 2>&1 && bpftool version >/dev/null 2>&1 && command -v bpftool || ls /usr/lib/linux-tools/*/bpftool 2>/dev/null | tail -1)
+
 BINARY  := wake
 PKG     := github.com/MatrixMagician/wake
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -18,7 +28,15 @@ all: build
 ## Generated rather than committed: it is 5 MiB of derived data, and CO-RE
 ## means the build host's types need not match the target's.
 bpf/vmlinux.h:
-	bpftool btf dump file /sys/kernel/btf/vmlinux format c > $@
+	@test -n "$(BPFTOOL)" || { \
+		echo "bpftool not found or not runnable."; \
+		echo "  Debian/Ubuntu: apt install linux-tools-generic"; \
+		echo "  Fedora/RHEL:   dnf install bpftool"; \
+		echo "If it is installed but broken, the PATH wrapper is asking for a"; \
+		echo "linux-tools package matching your running kernel; point BPFTOOL="; \
+		echo "at the real binary under /usr/lib/linux-tools/ instead."; \
+		exit 1; }
+	$(BPFTOOL) btf dump file /sys/kernel/btf/vmlinux format c > $@
 
 ## generate: compile the BPF C sources and produce the Go bindings.
 generate: bpf/vmlinux.h
