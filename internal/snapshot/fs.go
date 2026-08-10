@@ -80,6 +80,29 @@ func (OSFS) ReadDir(path string) ([]Entry, error) {
 	return entries, nil
 }
 
+// DirSize totals the regular files under path, tolerating errors and
+// returning whatever it managed to add up. It backs `wake status` and
+// `wake snapshots list`, where a partial number beats none and an
+// unreadable directory is not worth failing a display over.
+//
+// The pruner deliberately does not use this. OSFS.DirSize below returns an
+// error instead, because pruning decides what to delete: under-counting a
+// snapshot there could remove one that was actually within the retention
+// bound, and a wrong number is worse than a refusal.
+func DirSize(path string) int64 {
+	var total int64
+	_ = filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil //nolint:nilerr // a partial total beats no total
+		}
+		if info, err := d.Info(); err == nil {
+			total += info.Size()
+		}
+		return nil
+	})
+	return total
+}
+
 func (OSFS) DirSize(path string) (int64, error) {
 	var total int64
 	err := filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {

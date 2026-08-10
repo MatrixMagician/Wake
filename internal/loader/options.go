@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"time"
 )
 
 // Options is everything the loader needs from configuration, expressed in the
@@ -100,12 +99,10 @@ var classKinds = map[string]uint32{
 	"exec": 1, "exit": 2, "signal": 3, "oom": 4, "open": 5, "connect": 6,
 }
 
-// Record is one raw ring-buffer record with the time it was read. The reader
-// hands these to the decoder; nothing between the kernel and the decoder
-// interprets the bytes.
+// Record is one raw ring-buffer record. The reader hands these to the decoder;
+// nothing between the kernel and the decoder interprets the bytes.
 type Record struct {
-	Raw  []byte
-	Read time.Time
+	Raw []byte
 }
 
 // Source is the seam between the kernel and everything else. The production

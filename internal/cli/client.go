@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -45,7 +46,7 @@ func statusCmd(opts *options) *cobra.Command {
 // printStatus leads with what is lost. An operator reading this during an
 // incident needs to know whether they are looking at the whole picture before
 // they need any other number on the page.
-func printStatus(w interface{ Write([]byte) (int, error) }, s *ctl.Status) {
+func printStatus(w io.Writer, s *ctl.Status) {
 	p := func(format string, a ...any) { fmt.Fprintf(w, format+"\n", a...) }
 
 	p("wake %s (pid %d), recording for %s", s.Version, s.PID, s.Uptime.Round(time.Second))
@@ -232,6 +233,19 @@ func doctorCmd(opts *options) *cobra.Command {
 						}
 					}
 				}
+				// Notes carry no verdict, so they print below the checks
+				// rather than borrowing a status column that would always
+				// read "ok".
+				for _, n := range report.Notes {
+					fmt.Fprintln(out)
+					for i, line := range wrap(n, 72) {
+						prefix := "       "
+						if i == 0 {
+							prefix = "[note] "
+						}
+						fmt.Fprintf(out, "%s%s\n", prefix, line)
+					}
+				}
 				fmt.Fprintln(out)
 				if report.OK() {
 					fmt.Fprintln(out, "This host can run Wake.")
@@ -248,7 +262,7 @@ func doctorCmd(opts *options) *cobra.Command {
 	}
 }
 
-func writeJSON(w interface{ Write([]byte) (int, error) }, v any) error {
+func writeJSON(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)

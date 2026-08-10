@@ -34,6 +34,11 @@ type Result struct {
 // Report is the full preflight.
 type Report struct {
 	Results []Result `json:"results"`
+	// Notes are host observations that cannot pass or fail, but that save
+	// time when a load does go wrong. They are deliberately not Results: a
+	// check whose every code path returns OK teaches a reader to skim the
+	// column that is supposed to mean something.
+	Notes []string `json:"notes,omitempty"`
 }
 
 // OK reports whether every fatal check passed.
@@ -49,18 +54,40 @@ func (r Report) OK() bool {
 // Run performs every check. It never returns an error: the report *is* the
 // result, and a check that cannot run is itself a finding.
 func Run() Report {
-	return Report{Results: []Result{
-		checkKernelVersion(),
-		checkBTF(),
-		checkRingbuf(),
-		checkTracepoints(),
-		checkCapabilities(),
-		checkMemlock(),
-		checkUnprivilegedBPFSetting(),
-		checkSELinux(),
-		checkSnapshotDir(),
-		checkProcFDReadlink(),
-	}}
+	return Report{
+		Results: []Result{
+			checkKernelVersion(),
+			checkBTF(),
+			checkRingbuf(),
+			checkTracepoints(),
+			checkCapabilities(),
+			checkMemlock(),
+			checkSnapshotDir(),
+			checkProcFDReadlink(),
+		},
+		Notes: notes(),
+	}
+}
+
+// notes gathers host facts that no verdict applies to. Both entries exist to
+// head off a wrong guess: operators routinely blame
+// kernel.unprivileged_bpf_disabled for a failed load when it cannot apply, and
+// an enforcing SELinux is worth knowing about before reading an EACCES.
+func notes() []string {
+	var out []string
+	if b, err := os.ReadFile("/proc/sys/kernel/unprivileged_bpf_disabled"); err == nil {
+		out = append(out, fmt.Sprintf("kernel.unprivileged_bpf_disabled = %s. This is the "+
+			"setting most often blamed for a failed BPF load, and it is irrelevant to "+
+			"Wake: it runs with CAP_BPF or as root, so the setting does not apply.",
+			strings.TrimSpace(string(b))))
+	}
+	if b, err := os.ReadFile("/sys/fs/selinux/enforce"); err == nil &&
+		strings.TrimSpace(string(b)) == "1" {
+		out = append(out, "SELinux is enforcing. If loading fails with EACCES despite the "+
+			"capabilities being present, check for denials with `ausearch -m avc -ts "+
+			"recent`; the bpf and perfmon classes are the ones to look for.")
+	}
+	return out
 }
 
 // checkProcFDReadlink catches a failure that is invisible until you read a
@@ -131,10 +158,13 @@ func foreignPID() (int, bool) {
 func checkKernelVersion() Result {
 	var u unix.Utsname
 	if err := unix.Uname(&u); err != nil {
-		return Result{Name: "kernel version", Fatal: false,
-			Detail: fmt.Sprintf("uname failed: %v", err)}
+		// Not a failure of the host, and there is no remedy to offer: uname(2)
+		// does not fail on a running Linux kernel. Report it as unchecked
+		// rather than as a verdict we cannot justify.
+		return Result{Name: "kernel version", OK: true,
+			Detail: fmt.Sprintf("not checked: uname failed: %v", err)}
 	}
-	rel := nulString(u.Release[:])
+	rel := unix.ByteSliceToString(u.Release[:])
 	return Result{Name: "kernel version", OK: true, Detail: rel}
 }
 
@@ -226,50 +256,47 @@ func checkCapabilities() Result {
 func checkMemlock() Result {
 	var lim unix.Rlimit
 	if err := unix.Getrlimit(unix.RLIMIT_MEMLOCK, &lim); err != nil {
-		return Result{Name: "memlock rlimit", Detail: fmt.Sprintf("getrlimit failed: %v", err)}
+		// Same reasoning as checkKernelVersion: an unreadable rlimit is not
+		// evidence the host is broken, and this package's rule is that a
+		// failing check names its remedy. There is none to name here.
+		return Result{Name: memlockCheck, OK: true,
+			Detail: fmt.Sprintf("not checked: getrlimit failed: %v", err)}
 	}
-	if lim.Cur == unix.RLIM_INFINITY {
-		return Result{Name: "memlock rlimit", OK: true, Detail: "unlimited"}
-	}
-	// Wake raises this itself at load time given CAP_SYS_RESOURCE, so a low
-	// limit is only a problem when that capability is absent.
-	return Result{
-		Name: "memlock rlimit", OK: true,
-		Detail: fmt.Sprintf("%d bytes; Wake raises this at load time given CAP_SYS_RESOURCE", lim.Cur),
-	}
+	return memlockResult(lim.Cur, os.Geteuid() == 0)
 }
 
-// checkUnprivilegedBPFSetting exists to head off a red herring. Operators
-// frequently blame kernel.unprivileged_bpf_disabled for a failed load; it is
-// irrelevant when Wake holds CAP_BPF, and saying so saves an hour.
-func checkUnprivilegedBPFSetting() Result {
-	b, err := os.ReadFile("/proc/sys/kernel/unprivileged_bpf_disabled")
-	if err != nil {
-		return Result{Name: "unprivileged_bpf_disabled", OK: true,
-			Detail: "not readable; not relevant to a privileged Wake"}
-	}
-	return Result{
-		Name: "unprivileged_bpf_disabled", OK: true,
-		Detail: fmt.Sprintf("= %s (irrelevant: Wake runs with CAP_BPF or as root, "+
-			"so this setting does not apply to it)", strings.TrimSpace(string(b))),
-	}
-}
+const memlockCheck = "memlock rlimit"
 
-func checkSELinux() Result {
-	b, err := os.ReadFile("/sys/fs/selinux/enforce")
-	if err != nil {
-		return Result{Name: "SELinux", OK: true, Detail: "not enabled"}
-	}
-	mode := strings.TrimSpace(string(b))
-	if mode != "1" {
-		return Result{Name: "SELinux", OK: true, Detail: "permissive or disabled"}
-	}
-	return Result{
-		Name: "SELinux", OK: true,
-		Detail: "enforcing",
-		Remedy: "If loading fails with EACCES despite holding the capabilities, check " +
-			"for denials with `ausearch -m avc -ts recent`; bpf and perfmon classes " +
-			"are the ones to look for.",
+// minMemlockBytes is the 4 MiB BPF ring buffer plus room for the programs and
+// map metadata around it (internal/daemon, defaultRingBufBytes).
+const minMemlockBytes = 8 << 20
+
+// memlockResult is the verdict, split out from the syscall so both branches
+// that matter can be tested without being root and without a live rlimit.
+//
+// Wake calls RemoveMemlock at load time, which needs CAP_SYS_RESOURCE — root
+// always has it. So a low limit is only a problem for a non-root process, and
+// that combination is a genuine failure waiting to happen rather than the
+// unconditional pass this check used to report.
+func memlockResult(cur uint64, isRoot bool) Result {
+	switch {
+	case cur == unix.RLIM_INFINITY:
+		return Result{Name: memlockCheck, OK: true, Detail: "unlimited"}
+	case isRoot:
+		return Result{Name: memlockCheck, OK: true, Detail: fmt.Sprintf(
+			"%d bytes; Wake raises this at load time, which root may always do", cur)}
+	case cur >= minMemlockBytes:
+		return Result{Name: memlockCheck, OK: true, Detail: fmt.Sprintf(
+			"%d bytes, enough for the ring buffer even if raising it fails", cur)}
+	default:
+		return Result{
+			Name: memlockCheck, OK: false, Fatal: false,
+			Detail: fmt.Sprintf("%d bytes, below the %d the BPF ring buffer needs, "+
+				"and this process is not root", cur, minMemlockBytes),
+			Remedy: "Wake raises RLIMIT_MEMLOCK itself at load time, but that needs " +
+				"CAP_SYS_RESOURCE. Grant it — the shipped unit at deploy/wake.service " +
+				"does — or raise LimitMEMLOCK on the service.",
+		}
 	}
 }
 
@@ -301,17 +328,10 @@ func kernelRelease() string {
 	if err := unix.Uname(&u); err != nil {
 		return ""
 	}
-	return nulString(u.Release[:])
+	return unix.ByteSliceToString(u.Release[:])
 }
 
 func parseRelease(rel string) (major, minor int) {
 	_, _ = fmt.Sscanf(rel, "%d.%d", &major, &minor)
 	return
-}
-
-func nulString(b []byte) string {
-	if i := strings.IndexByte(string(b), 0); i >= 0 {
-		return string(b[:i])
-	}
-	return string(b)
 }

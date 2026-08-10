@@ -110,15 +110,22 @@ func triggerRules(cfg *config.Config) ([]trigger.Rule, error) {
 		if err != nil {
 			return nil, fmt.Errorf("trigger %q: %w", w.Name, err)
 		}
-		rules = append(rules, trigger.Rule{
+		rule := trigger.Rule{
 			Name:     w.Name,
 			Type:     trigger.TypeProcess,
 			Cooldown: w.Cooldown,
 			Comm:     w.CommGlob,
 			Cgroup:   w.CgroupGlob,
 			Unit:     w.UnitGlob,
-			Exit:     exitPredicate(pred),
-		})
+		}
+		// An unset exit_code leaves Exit nil, which the engine reads as its
+		// documented default: any abnormal exit. That is deliberately not the
+		// same as an explicit "any", which per the config grammar matches every
+		// exit, clean ones included.
+		if strings.TrimSpace(w.ExitCode) != "" {
+			rule.Exit = pred.Match
+		}
+		rules = append(rules, rule)
 	}
 
 	if cfg.Triggers.OOM.Enabled {
@@ -159,31 +166,4 @@ func triggerRules(cfg *config.Config) ([]trigger.Rule, error) {
 	}
 
 	return rules, nil
-}
-
-// exitPredicate bridges the config predicate to the trigger one. They are
-// separate types on purpose: the config type parses a user-facing grammar,
-// and the trigger type evaluates decoded events.
-func exitPredicate(p config.ExitCodePredicate) trigger.ExitPredicate {
-	out := trigger.ExitPredicate{}
-	// The config predicate exposes only a Match method, so the bridge asks it
-	// the questions the engine needs answered rather than reaching inside.
-	out.AnyNonZero = p.Match(1, false)
-	out.AnySignal = p.Match(0, true)
-	for code := int32(1); code < 256; code++ {
-		if p.Match(code, false) {
-			out.Codes = append(out.Codes, code)
-		}
-	}
-	for sig := int32(1); sig <= 64; sig++ {
-		if p.Match(sig, true) {
-			out.Signals = append(out.Signals, sig)
-		}
-	}
-	if out.AnyNonZero && len(out.Codes) == 255 {
-		// The predicate accepts every non-zero code; say so compactly rather
-		// than carrying a 255-element list into every comparison.
-		out.Codes = nil
-	}
-	return out
 }

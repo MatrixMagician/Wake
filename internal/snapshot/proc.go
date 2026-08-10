@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -164,7 +164,7 @@ func writeProcDir(fsys FS, dir string, pid int32, src ProcSource) (*ProcCaptureS
 	for name := range files {
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	for _, name := range names {
 		if err := fsys.WriteFile(dir+"/"+name, files[name], 0o600); err != nil {
 			return nil, fmt.Errorf("write proc/%s: %w", name, err)
@@ -177,7 +177,7 @@ func writeProcDir(fsys FS, dir string, pid int32, src ProcSource) (*ProcCaptureS
 		for name := range fds {
 			fdNames = append(fdNames, name)
 		}
-		sort.Strings(fdNames)
+		slices.Sort(fdNames)
 
 		var b strings.Builder
 		for _, name := range fdNames {

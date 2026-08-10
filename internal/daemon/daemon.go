@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -271,7 +270,7 @@ func (d *Daemon) takeSnapshot(f trigger.Firing) {
 	}
 	d.mu.Lock()
 	d.snapshots = len(pruned.Kept)
-	d.snapshotSize = d.dirSize()
+	d.snapshotSize = snapshot.DirSize(d.cfg.Snapshot.Dir)
 	d.mu.Unlock()
 }
 
@@ -318,21 +317,6 @@ type snapshotOutcome struct {
 	err    error
 }
 
-// dirSize totals the snapshot directory, for status output.
-func (d *Daemon) dirSize() int64 {
-	var total int64
-	_ = filepath.WalkDir(d.cfg.Snapshot.Dir, func(_ string, e os.DirEntry, err error) error {
-		if err != nil || e.IsDir() {
-			return nil //nolint:nilerr // a partial total beats no total
-		}
-		if fi, err := e.Info(); err == nil {
-			total += fi.Size()
-		}
-		return nil
-	})
-	return total
-}
-
 // notifyPending releases anything waiting on a manual trigger.
 func (d *Daemon) notifyPending(out snapshotOutcome) {
 	d.mu.Lock()
@@ -360,12 +344,15 @@ func (d *Daemon) Status() ctl.Status {
 	snaps, size, last := d.snapshots, d.snapshotSize, d.lastSnapshot
 	d.mu.Unlock()
 
+	oldest, newest := d.ring.Span()
 	st := ctl.Status{
 		Version:       version.Version,
 		PID:           os.Getpid(),
 		StartedAt:     d.startedAt,
 		Uptime:        time.Since(d.startedAt),
 		Events:        d.ring.Len(),
+		OldestEvent:   oldest,
+		NewestEvent:   newest,
 		MaxEvents:     d.cfg.Ring.MaxEvents,
 		Bytes:         int(d.ring.Bytes()),
 		MaxBytes:      int(d.cfg.Ring.MemoryBudgetBytes),
@@ -379,15 +366,20 @@ func (d *Daemon) Status() ctl.Status {
 	}
 
 	suppressed := d.engine.Suppressed()
+	lastFired := d.engine.LastFired()
 	rules, err := triggerRules(d.cfg)
 	if err == nil {
 		for _, r := range rules {
-			st.Rules = append(st.Rules, ctl.RuleStatus{
+			rs := ctl.RuleStatus{
 				Name:       r.Name,
 				Type:       string(r.Type),
 				Cooldown:   r.Cooldown.String(),
 				Suppressed: suppressed[r.Name],
-			})
+			}
+			if t, ok := lastFired[r.Name]; ok {
+				rs.LastFired = &t
+			}
+			st.Rules = append(st.Rules, rs)
 		}
 	}
 	return st

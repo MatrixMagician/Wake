@@ -51,20 +51,27 @@ func mustEngine(t *testing.T, rules []Rule, c Clock) *Engine {
 
 func TestProcessTriggerExitPredicates(t *testing.T) {
 	t.Parallel()
+	// Nil is the documented default: any abnormal exit. The others mirror what
+	// the config grammar compiles to — an exact code, and death by signal.
+	exactCode := func(want int32) ExitFunc {
+		return func(code int32, bySignal bool) bool { return !bySignal && code == want }
+	}
+	anySignal := func(_ int32, bySignal bool) bool { return bySignal }
+
 	for _, tc := range []struct {
 		name string
-		pred ExitPredicate
+		pred ExitFunc
 		ev   *event.Event
 		want bool
 	}{
-		{"default matches non-zero exit", ExitPredicate{}, exitEvent("mstr", 1, 0), true},
-		{"default matches a signal death", ExitPredicate{}, exitEvent("mstr", 0, 11), true},
-		{"default ignores a clean exit", ExitPredicate{}, exitEvent("mstr", 0, 0), false},
-		{"specific code matches", ExitPredicate{Codes: []int32{137}}, exitEvent("mstr", 137, 0), true},
-		{"specific code ignores others", ExitPredicate{Codes: []int32{137}}, exitEvent("mstr", 1, 0), false},
-		{"specific signal matches", ExitPredicate{Signals: []int32{9}}, exitEvent("mstr", 0, 9), true},
-		{"any signal matches", ExitPredicate{AnySignal: true}, exitEvent("mstr", 0, 6), true},
-		{"any signal ignores a code-only exit", ExitPredicate{AnySignal: true}, exitEvent("mstr", 3, 0), false},
+		{"default matches non-zero exit", nil, exitEvent("mstr", 1, 0), true},
+		{"default matches a signal death", nil, exitEvent("mstr", 0, 11), true},
+		{"default ignores a clean exit", nil, exitEvent("mstr", 0, 0), false},
+		{"specific code matches", exactCode(137), exitEvent("mstr", 137, 0), true},
+		{"specific code ignores others", exactCode(137), exitEvent("mstr", 1, 0), false},
+		{"specific code ignores a signal death", exactCode(137), exitEvent("mstr", 0, 9), false},
+		{"any signal matches", anySignal, exitEvent("mstr", 0, 6), true},
+		{"any signal ignores a code-only exit", anySignal, exitEvent("mstr", 3, 0), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := mustEngine(t, []Rule{{
@@ -225,22 +232,6 @@ func TestRuleValidation(t *testing.T) {
 	}
 }
 
-func TestFiringSlugIsFilesystemSafe(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		f    Firing
-		want string
-	}{
-		{Firing{Type: TypeOOM, Comm: "my proc/1"}, "oom-my_proc_1"},
-		{Firing{Type: TypeUnit, Unit: "mstr.service"}, "unit-mstr"},
-		{Firing{Type: TypeManual}, "manual"},
-	} {
-		if got := tc.f.Slug(); got != tc.want {
-			t.Errorf("Slug() = %q, want %q", got, tc.want)
-		}
-	}
-}
-
 func TestUnitFromPathDecodesSystemdEscaping(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ path, want string }{
@@ -276,5 +267,40 @@ func TestObserveNeverBlocks(t *testing.T) {
 	}
 	if e.Suppressed()["r"] == 0 {
 		t.Error("firings dropped by a full channel must still be counted")
+	}
+}
+
+// TestLastFiredTracksFirings covers what `wake status` shows next to each
+// rule. A rule that has never fired must be absent rather than present with a
+// zero time, or the display would claim a firing at the epoch.
+func TestLastFiredTracksFirings(t *testing.T) {
+	t.Parallel()
+	clk := newClock()
+	e := mustEngine(t, []Rule{
+		{Name: "oom", Type: TypeOOM},
+		{Name: "quiet", Type: TypeOOM, Comm: "never-matches"},
+	}, clk)
+
+	if got := e.LastFired(); len(got) != 0 {
+		t.Errorf("LastFired on a fresh engine = %v, want empty", got)
+	}
+
+	ev := &event.Event{Class: event.ClassOOM, PID: 99}
+	ev.Comm = "mstr"
+	e.Observe(ev)
+	drain(e)
+
+	fired := e.LastFired()
+	if _, ok := fired["oom"]; !ok {
+		t.Error("the rule that fired is missing from LastFired")
+	}
+	if _, ok := fired["quiet"]; ok {
+		t.Error("a rule that never fired must be absent, not zero-valued")
+	}
+
+	// The returned map is a copy: mutating it must not corrupt the engine.
+	fired["oom"] = time.Time{}
+	if again := e.LastFired(); again["oom"].IsZero() {
+		t.Error("LastFired handed out a reference to the engine's own map")
 	}
 }

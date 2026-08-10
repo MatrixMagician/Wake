@@ -30,9 +30,12 @@ import (
 // job is to admit ignorance, never to guess (see event.Enrichment's doc
 // comment on the same point).
 type ProcSource interface {
-	// Status returns a live process's comm, parent pid and uid, read from
-	// /proc/<pid>/status.
-	Status(pid int32) (comm string, ppid int32, uid uint32, ok bool)
+	// Status returns a live process's comm and parent pid, read from
+	// /proc/<pid>/status. The uid is deliberately not here: it travels on
+	// every event's own header (event.Event.UID) regardless of class, so it
+	// is always available first-hand rather than through a pid-keyed lookup
+	// that can only fail once the process is gone.
+	Status(pid int32) (comm string, ppid int32, ok bool)
 	// Cgroup returns a live process's cgroup path, read from
 	// /proc/<pid>/cgroup (the unified-hierarchy line where present).
 	Cgroup(pid int32) (path string, ok bool)
@@ -125,7 +128,7 @@ func (c *Cache) Observe(e event.Event) {
 func (c *Cache) observeExec(e event.Event) {
 	comm, ppid := e.Comm, e.Ppid
 	if comm == "" || ppid == 0 {
-		if sComm, sPpid, _, ok := c.source.Status(e.PID); ok {
+		if sComm, sPpid, ok := c.source.Status(e.PID); ok {
 			if comm == "" {
 				comm = sComm
 			}
@@ -169,7 +172,7 @@ func (c *Cache) observeExit(e event.Event) {
 	c.mu.Unlock()
 
 	comm, ppid := e.Comm, int32(0)
-	if sComm, sPpid, _, ok := c.source.Status(e.PID); ok {
+	if sComm, sPpid, ok := c.source.Status(e.PID); ok {
 		if comm == "" {
 			comm = sComm
 		}
@@ -242,7 +245,7 @@ func (c *Cache) Resolve(e *event.Event) {
 // readable cgroup file after its status has become unreadable, or vice
 // versa, so partial success is still worth caching rather than discarded.
 func (c *Cache) fallback(pid int32) (*entry, bool) {
-	comm, ppid, _, statusOK := c.source.Status(pid)
+	comm, ppid, statusOK := c.source.Status(pid)
 	cgroupPath, cgOK := c.source.Cgroup(pid)
 	if !statusOK && !cgOK {
 		return nil, false
@@ -293,7 +296,7 @@ func (c *Cache) buildAncestorsLocked(ppid int32) []string {
 		if el, ok := c.items[pid]; ok {
 			en := el.Value.(*entry)
 			comm, next = en.comm, en.ppid
-		} else if sComm, sPpid, _, ok := c.source.Status(pid); ok {
+		} else if sComm, sPpid, ok := c.source.Status(pid); ok {
 			comm, next = sComm, sPpid
 		} else {
 			break
