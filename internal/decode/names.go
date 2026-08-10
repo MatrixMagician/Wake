@@ -4,26 +4,23 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 // This file turns kernel integers into the names a human reading an incident
 // report needs. Every unknown value degrades to a numeric form rather than to
 // an empty string: "signal 64" is useful, "" is not.
-
-var signalNames = map[int32]string{
-	1: "SIGHUP", 2: "SIGINT", 3: "SIGQUIT", 4: "SIGILL", 5: "SIGTRAP",
-	6: "SIGABRT", 7: "SIGBUS", 8: "SIGFPE", 9: "SIGKILL", 10: "SIGUSR1",
-	11: "SIGSEGV", 12: "SIGUSR2", 13: "SIGPIPE", 14: "SIGALRM", 15: "SIGTERM",
-	16: "SIGSTKFLT", 17: "SIGCHLD", 18: "SIGCONT", 19: "SIGSTOP", 20: "SIGTSTP",
-	21: "SIGTTIN", 22: "SIGTTOU", 23: "SIGURG", 24: "SIGXCPU", 25: "SIGXFSZ",
-	26: "SIGVTALRM", 27: "SIGPROF", 28: "SIGWINCH", 29: "SIGIO", 30: "SIGPWR",
-	31: "SIGSYS",
-}
+//
+// The signal and errno tables are x/sys/unix's rather than hand-maintained
+// ones: they are generated from the kernel headers, so they cover values a
+// hand-written list would miss and cannot drift from the platform.
 
 // SignalName renders a signal number. Real-time signals are named by offset
-// from SIGRTMIN, which is how operators refer to them.
+// from SIGRTMIN, which is how operators refer to them and which the platform
+// table does not cover — it names only the standard signals.
 func SignalName(sig int32) string {
-	if n, ok := signalNames[sig]; ok {
+	if n := unix.SignalName(syscall.Signal(sig)); n != "" {
 		return n
 	}
 	if sig >= 34 && sig <= 64 {
@@ -41,24 +38,13 @@ func Errno(n int64) string {
 	if n <= 0 {
 		return ""
 	}
-	e := syscall.Errno(n) //nolint:gosec // bounded by the kernel's own errno range
-	if name := errnoNames[n]; name != "" {
+	if name := unix.ErrnoName(syscall.Errno(n)); name != "" { //nolint:gosec // bounded by the kernel's own errno range
 		return name
 	}
-	if s := e.Error(); s != "" {
-		return "errno " + strconv.FormatInt(n, 10) + " (" + s + ")"
-	}
+	// An errno the platform cannot name has no message either: syscall.Errno's
+	// own Error() renders it as "errno N", so appending that would only repeat
+	// the number back.
 	return "errno " + strconv.FormatInt(n, 10)
-}
-
-var errnoNames = map[int64]string{
-	1: "EPERM", 2: "ENOENT", 3: "ESRCH", 4: "EINTR", 5: "EIO", 6: "ENXIO",
-	7: "E2BIG", 9: "EBADF", 11: "EAGAIN", 12: "ENOMEM", 13: "EACCES",
-	14: "EFAULT", 16: "EBUSY", 17: "EEXIST", 20: "ENOTDIR", 21: "EISDIR",
-	22: "EINVAL", 23: "ENFILE", 24: "EMFILE", 27: "EFBIG", 28: "ENOSPC",
-	30: "EROFS", 32: "EPIPE", 36: "ENAMETOOLONG", 40: "ELOOP",
-	98: "EADDRINUSE", 99: "EADDRNOTAVAIL", 101: "ENETUNREACH",
-	104: "ECONNRESET", 110: "ETIMEDOUT", 111: "ECONNREFUSED", 113: "EHOSTUNREACH",
 }
 
 // openFlagNames covers the flags that matter for diagnosis. The access mode

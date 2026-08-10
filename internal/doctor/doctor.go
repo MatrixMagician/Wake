@@ -134,7 +134,7 @@ func checkKernelVersion() Result {
 		return Result{Name: "kernel version", Fatal: false,
 			Detail: fmt.Sprintf("uname failed: %v", err)}
 	}
-	rel := nulString(u.Release[:])
+	rel := unix.ByteSliceToString(u.Release[:])
 	return Result{Name: "kernel version", OK: true, Detail: rel}
 }
 
@@ -301,17 +301,10 @@ func kernelRelease() string {
 	if err := unix.Uname(&u); err != nil {
 		return ""
 	}
-	return nulString(u.Release[:])
+	return unix.ByteSliceToString(u.Release[:])
 }
 
 func parseRelease(rel string) (major, minor int) {
 	_, _ = fmt.Sscanf(rel, "%d.%d", &major, &minor)
 	return
-}
-
-func nulString(b []byte) string {
-	if i := strings.IndexByte(string(b), 0); i >= 0 {
-		return string(b[:i])
-	}
-	return string(b)
 }
