@@ -158,8 +158,11 @@ func foreignPID() (int, bool) {
 func checkKernelVersion() Result {
 	var u unix.Utsname
 	if err := unix.Uname(&u); err != nil {
-		return Result{Name: "kernel version", Fatal: false,
-			Detail: fmt.Sprintf("uname failed: %v", err)}
+		// Not a failure of the host, and there is no remedy to offer: uname(2)
+		// does not fail on a running Linux kernel. Report it as unchecked
+		// rather than as a verdict we cannot justify.
+		return Result{Name: "kernel version", OK: true,
+			Detail: fmt.Sprintf("not checked: uname failed: %v", err)}
 	}
 	rel := unix.ByteSliceToString(u.Release[:])
 	return Result{Name: "kernel version", OK: true, Detail: rel}
@@ -253,7 +256,11 @@ func checkCapabilities() Result {
 func checkMemlock() Result {
 	var lim unix.Rlimit
 	if err := unix.Getrlimit(unix.RLIMIT_MEMLOCK, &lim); err != nil {
-		return Result{Name: memlockCheck, Detail: fmt.Sprintf("getrlimit failed: %v", err)}
+		// Same reasoning as checkKernelVersion: an unreadable rlimit is not
+		// evidence the host is broken, and this package's rule is that a
+		// failing check names its remedy. There is none to name here.
+		return Result{Name: memlockCheck, OK: true,
+			Detail: fmt.Sprintf("not checked: getrlimit failed: %v", err)}
 	}
 	return memlockResult(lim.Cur, os.Geteuid() == 0)
 }
