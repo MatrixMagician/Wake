@@ -99,7 +99,9 @@ BPF (tracepoints + in-kernel filters) --ringbuf--> reader -> decode -> bounded r
 ## Agent skills
 
 This repo is configured for the engineering skills (`triage`, `to-spec`, `to-tickets`,
-`implement`, `tdd`, `wayfinder`, `code-review`, `diagnosing-bugs`, `domain-modeling`).
+`implement`, `tdd`, `prototype`, `research`, `wayfinder`, `code-review`, `diagnosing-bugs`,
+`domain-modeling`, `codebase-design`, `improve-codebase-architecture`,
+`resolving-merge-conflicts`, `wizard`, `grill-with-docs`, `ask-matt`).
 
 - **Issue tracker:** see `docs/agents/issue-tracker.md`.
 - **Triage labels:** see `docs/agents/triage-labels.md`.
