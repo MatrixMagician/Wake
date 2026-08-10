@@ -166,7 +166,7 @@ func listSnapshots(dir string) ([]snapshotSummary, error) {
 		if fi, err := e.Info(); err == nil {
 			s.Written = fi.ModTime()
 		}
-		s.Bytes = dirSize(path)
+		s.Bytes = snapshot.DirSize(path)
 
 		// A snapshot whose manifest is unreadable is still listed: a
 		// half-written or corrupted snapshot is exactly the sort of thing an
@@ -194,20 +194,6 @@ func listSnapshots(dir string) ([]snapshotSummary, error) {
 
 	slices.SortFunc(out, func(a, b snapshotSummary) int { return strings.Compare(b.ID, a.ID) })
 	return out, nil
-}
-
-func dirSize(path string) int64 {
-	var total int64
-	_ = filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return nil //nolint:nilerr // a partial size beats no size
-		}
-		if fi, err := d.Info(); err == nil {
-			total += fi.Size()
-		}
-		return nil
-	})
-	return total
 }
 
 // parseSize accepts a byte count with an optional unit suffix, because an

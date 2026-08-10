@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -271,7 +270,7 @@ func (d *Daemon) takeSnapshot(f trigger.Firing) {
 	}
 	d.mu.Lock()
 	d.snapshots = len(pruned.Kept)
-	d.snapshotSize = d.dirSize()
+	d.snapshotSize = snapshot.DirSize(d.cfg.Snapshot.Dir)
 	d.mu.Unlock()
 }
 
@@ -316,21 +315,6 @@ type snapshotOutcome struct {
 	path   string
 	events int
 	err    error
-}
-
-// dirSize totals the snapshot directory, for status output.
-func (d *Daemon) dirSize() int64 {
-	var total int64
-	_ = filepath.WalkDir(d.cfg.Snapshot.Dir, func(_ string, e os.DirEntry, err error) error {
-		if err != nil || e.IsDir() {
-			return nil //nolint:nilerr // a partial total beats no total
-		}
-		if fi, err := e.Info(); err == nil {
-			total += fi.Size()
-		}
-		return nil
-	})
-	return total
 }
 
 // notifyPending releases anything waiting on a manual trigger.
