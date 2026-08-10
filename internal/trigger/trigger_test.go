@@ -225,22 +225,6 @@ func TestRuleValidation(t *testing.T) {
 	}
 }
 
-func TestFiringSlugIsFilesystemSafe(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		f    Firing
-		want string
-	}{
-		{Firing{Type: TypeOOM, Comm: "my proc/1"}, "oom-my_proc_1"},
-		{Firing{Type: TypeUnit, Unit: "mstr.service"}, "unit-mstr"},
-		{Firing{Type: TypeManual}, "manual"},
-	} {
-		if got := tc.f.Slug(); got != tc.want {
-			t.Errorf("Slug() = %q, want %q", got, tc.want)
-		}
-	}
-}
-
 func TestUnitFromPathDecodesSystemdEscaping(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ path, want string }{

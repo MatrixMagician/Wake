@@ -45,8 +45,6 @@ type Recorder struct {
 
 	kernelDropInterval time.Duration
 
-	startedAt time.Time
-
 	mu       sync.Mutex
 	watchers map[int]*watcher
 	nextID   int
@@ -90,13 +88,9 @@ func New(o Options) *Recorder {
 		src:                o.Source, dec: o.Decoder, ring: o.Ring,
 		enrich: o.Enricher, redact: o.Redactor, triggers: o.Triggers,
 		drops: o.Drops, log: log,
-		startedAt: time.Now(),
-		watchers:  make(map[int]*watcher),
+		watchers: make(map[int]*watcher),
 	}
 }
-
-// StartedAt reports when recording began, for `wake status`.
-func (r *Recorder) StartedAt() time.Time { return r.startedAt }
 
 // Run pumps events until the context is cancelled or the source closes.
 //
@@ -164,9 +158,6 @@ func (r *Recorder) Freeze() ([]event.Event, event.DropReport) {
 	return r.ring.Freeze()
 }
 
-// Ring exposes the ring for status reporting.
-func (r *Recorder) Ring() *ring.Ring { return r.ring }
-
 // watcher is one `wake watch` client.
 type watcher struct {
 	ch      chan event.Event
@@ -221,11 +212,4 @@ func (r *Recorder) fanOut(ev event.Event) {
 			r.drops.Add(event.BoundaryWatch, ev.Class, 1)
 		}
 	}
-}
-
-// Watchers reports how many watch streams are attached, for status.
-func (r *Recorder) Watchers() int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return len(r.watchers)
 }

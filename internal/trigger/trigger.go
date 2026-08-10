@@ -9,7 +9,6 @@ package trigger
 import (
 	"fmt"
 	"path"
-	"strings"
 	"sync"
 	"time"
 
@@ -144,30 +143,6 @@ type Firing struct {
 	Unit   string       `json:"unit,omitempty"`
 	Cgroup string       `json:"cgroup,omitempty"`
 	Event  *event.Event `json:"-"`
-}
-
-// Slug is the filesystem-safe fragment used in a snapshot directory name.
-func (f Firing) Slug() string {
-	s := string(f.Type)
-	if f.Comm != "" {
-		s += "-" + sanitise(f.Comm)
-	} else if f.Unit != "" {
-		s += "-" + sanitise(strings.TrimSuffix(f.Unit, ".service"))
-	}
-	return s
-}
-
-func sanitise(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
-			b.WriteRune(r)
-		default:
-			b.WriteByte('_')
-		}
-	}
-	return b.String()
 }
 
 // Clock is injectable so that cooldown behaviour can be tested in
@@ -383,6 +358,3 @@ func (e *Engine) Suppressed() map[string]uint64 {
 	}
 	return out
 }
-
-// Close releases the firing channel.
-func (e *Engine) Close() { close(e.out) }

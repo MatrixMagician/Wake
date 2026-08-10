@@ -8,7 +8,6 @@
 package ctl
 
 import (
-	"encoding/json"
 	"time"
 
 	"github.com/MatrixMagician/wake/internal/event"
@@ -100,7 +99,3 @@ type TriggerResult struct {
 	Events   int    `json:"events,omitempty"`
 	Message  string `json:"message,omitempty"`
 }
-
-// Encode writes v as one JSON line, which is what makes the protocol
-// shell-drivable.
-func Encode(enc *json.Encoder, v any) error { return enc.Encode(v) }

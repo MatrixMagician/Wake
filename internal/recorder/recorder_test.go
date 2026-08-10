@@ -75,7 +75,7 @@ func exitRecord(pid int32, comm string, code int32) loader.Record {
 	binary.LittleEndian.PutUint32(b[20:], uint32(pid)) //nolint:gosec
 	copy(b[40:56], comm)
 	binary.LittleEndian.PutUint32(b[headerSize:], uint32(code)) //nolint:gosec
-	return loader.Record{Raw: b, Read: time.Now()}
+	return loader.Record{Raw: b}
 }
 
 func execRecord(pid int32, comm, argv string) loader.Record {
@@ -87,7 +87,7 @@ func execRecord(pid int32, comm, argv string) loader.Record {
 	copy(b[40:56], comm)
 	binary.LittleEndian.PutUint32(b[60:], uint32(len(argv))) //nolint:gosec
 	copy(b[324:], argv)
-	return loader.Record{Raw: b, Read: time.Now()}
+	return loader.Record{Raw: b}
 }
 
 // stubEnricher records what it saw and stamps a fixed unit, so that unit
@@ -320,7 +320,7 @@ func TestUndecodableRecordsAreKept(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, nil, nil)
 
-	h.src.ch <- loader.Record{Raw: []byte{0xde, 0xad, 0xbe, 0xef}, Read: time.Now()}
+	h.src.ch <- loader.Record{Raw: []byte{0xde, 0xad, 0xbe, 0xef}}
 	waitFor(t, "the generic event", func() bool { return h.ring.Len() == 1 })
 
 	events, _ := h.ring.Freeze()
