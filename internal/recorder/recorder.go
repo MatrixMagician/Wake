@@ -102,17 +102,22 @@ func New(o Options) *Recorder {
 	}
 }
 
-// inScope applies the userspace CIDR filter. A connect event whose destination
-// lies outside every configured prefix never enters the ring, the watch
-// fan-out, or the trigger engine.
+// destinationAllowed applies the network filter (CONTEXT.md, "Network
+// filter"). A connect event whose destination lies outside every configured
+// prefix never enters the ring, the watch fan-out, or the trigger engine.
 //
-// Being out of scope is not a drop, and must never be counted as one. A drop
+// Deliberately not called "scope": CONTEXT.md reserves that word for the
+// in-kernel filter set, and says anything else filtered in userspace is a bug.
+// This filter is the single documented exception, carrying its own name so the
+// glossary's rule stays true (docs/decisions/0002-cidr-filtering-in-userspace.md).
+//
+// An excluded event is not a drop and must never be counted as one. A drop
 // means something that should have been kept was lost; an event the operator
 // configured Wake not to record was never wanted in the first place. The
 // in-kernel cgroup, comm, path and port filters behave the same way — they
 // simply never emit — so counting this one would make the connect class look
 // lossy for doing exactly what it was told.
-func (r *Recorder) inScope(ev *event.Event) bool {
+func (r *Recorder) destinationAllowed(ev *event.Event) bool {
 	if len(r.cidrs) == 0 || ev.Class != event.ClassConnect {
 		return true
 	}
@@ -152,7 +157,7 @@ func (r *Recorder) Run(ctx context.Context) error {
 			}
 			ev := r.dec.Decode(rec.Raw)
 
-			if !r.inScope(&ev) {
+			if !r.destinationAllowed(&ev) {
 				continue
 			}
 

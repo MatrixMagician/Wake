@@ -470,3 +470,19 @@ func TestCIDRFilterKeepsUnclassifiableAddresses(t *testing.T) {
 		t.Errorf("events = %+v, want the unclassifiable connect kept", events)
 	}
 }
+
+// TestNoCIDRsRecordsEveryConnect pins the unconfigured case: an empty prefix
+// list must mean no address restriction at all, not "match nothing".
+func TestNoCIDRsRecordsEveryConnect(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, nil, nil)
+
+	h.src.ch <- connectRecord(1, "v4", 2, []byte{192, 168, 0, 1})
+	h.src.ch <- connectRecord(2, "v6", 10, append(
+		[]byte{0xfd, 0x00}, make([]byte, 14)...))
+	waitFor(t, "both connects", func() bool { return h.ring.Len() == 2 })
+
+	if n := h.drops.Total(); n != 0 {
+		t.Errorf("drops = %d, want 0 with no filter configured", n)
+	}
+}
