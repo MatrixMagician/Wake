@@ -23,19 +23,19 @@ type ProcfsSource struct {
 // NewProcfsSource returns a ProcSource reading the real /proc filesystem.
 func NewProcfsSource() *ProcfsSource { return &ProcfsSource{Root: "/proc"} }
 
-// Status reads comm, ppid and uid from /proc/<pid>/status. comm here is
-// /proc's "Name:" field, which the kernel truncates to 15 bytes — shorter
-// than event.Event's own Comm when it came from the wire header, but a
-// reasonable best-effort fallback for a pid Wake never observed directly.
-func (s *ProcfsSource) Status(pid int32) (comm string, ppid int32, uid uint32, ok bool) {
+// Status reads comm and ppid from /proc/<pid>/status. comm here is /proc's
+// "Name:" field, which the kernel truncates to 15 bytes — shorter than
+// event.Event's own Comm when it came from the wire header, but a reasonable
+// best-effort fallback for a pid Wake never observed directly.
+func (s *ProcfsSource) Status(pid int32) (comm string, ppid int32, ok bool) {
 	f, err := os.Open(s.Root + "/" + strconv.Itoa(int(pid)) + "/status")
 	if err != nil {
-		return "", 0, 0, false
+		return "", 0, false
 	}
 	defer func() { _ = f.Close() }() // read-only: a failed close has nothing to report
 
 	sc := bufio.NewScanner(f)
-	var haveName, havePPid, haveUID bool
+	var haveName, havePPid bool
 	for sc.Scan() {
 		line := sc.Text()
 		switch {
@@ -47,20 +47,9 @@ func (s *ProcfsSource) Status(pid int32) (comm string, ppid int32, uid uint32, o
 				ppid = int32(v)
 				havePPid = true
 			}
-		case strings.HasPrefix(line, "Uid:"):
-			// "Uid:\treal\teffective\tsaved\tfs" — the real uid is the field
-			// enrichment cares about, matching event.Event.UID's own source
-			// (the exec'ing task's real uid at the tracepoint).
-			fields := strings.Fields(strings.TrimPrefix(line, "Uid:"))
-			if len(fields) > 0 {
-				if v, err := strconv.ParseUint(fields[0], 10, 32); err == nil {
-					uid = uint32(v)
-					haveUID = true
-				}
-			}
 		}
 	}
-	return comm, ppid, uid, haveName && havePPid && haveUID
+	return comm, ppid, haveName && havePPid
 }
 
 // Cgroup reads /proc/<pid>/cgroup and returns the unified (cgroup v2) entry,
@@ -127,7 +116,6 @@ type FakeSource struct {
 type FakeStatus struct {
 	Comm string
 	PPid int32
-	UID  uint32
 }
 
 // NewFakeSource returns an empty FakeSource ready for tests to populate.
@@ -139,12 +127,12 @@ func NewFakeSource() *FakeSource {
 	}
 }
 
-func (f *FakeSource) Status(pid int32) (comm string, ppid int32, uid uint32, ok bool) {
+func (f *FakeSource) Status(pid int32) (comm string, ppid int32, ok bool) {
 	s, ok := f.StatusByPID[pid]
 	if !ok {
-		return "", 0, 0, false
+		return "", 0, false
 	}
-	return s.Comm, s.PPid, s.UID, true
+	return s.Comm, s.PPid, true
 }
 
 func (f *FakeSource) Cgroup(pid int32) (path string, ok bool) {
