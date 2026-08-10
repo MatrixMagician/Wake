@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -192,7 +192,7 @@ func listSnapshots(dir string) ([]snapshotSummary, error) {
 		out = append(out, s)
 	}
 
-	sort.Slice(out, func(i, j int) bool { return out[i].ID > out[j].ID })
+	slices.SortFunc(out, func(a, b snapshotSummary) int { return strings.Compare(b.ID, a.ID) })
 	return out, nil
 }
 

@@ -3,7 +3,7 @@ package snapshot
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/klauspost/compress/zstd"
@@ -114,8 +114,8 @@ func (w *Writer) Write(in Input) (Result, error) {
 
 	events := make([]event.Event, len(in.Events))
 	copy(events, in.Events)
-	sort.SliceStable(events, func(i, j int) bool {
-		return events[i].Timestamp.Before(events[j].Timestamp)
+	slices.SortStableFunc(events, func(a, b event.Event) int {
+		return a.Timestamp.Compare(b.Timestamp)
 	})
 
 	eventCount, err := writeEventsJSONL(w.fs, stagingPath+"/events.jsonl.zst", events)

@@ -8,6 +8,7 @@ package event
 
 import (
 	"encoding/json"
+	"slices"
 	"time"
 )
 
@@ -40,14 +41,7 @@ var Classes = []Class{
 }
 
 // Valid reports whether c is a known class.
-func (c Class) Valid() bool {
-	for _, k := range Classes {
-		if k == c {
-			return true
-		}
-	}
-	return false
-}
+func (c Class) Valid() bool { return slices.Contains(Classes, c) }
 
 // Enrichment is the attribution attached to an event at snapshot time from the
 // enrichment cache. Fields are best-effort: an empty value means "not known",

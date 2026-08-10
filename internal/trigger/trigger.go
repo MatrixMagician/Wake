@@ -8,7 +8,9 @@ package trigger
 
 import (
 	"fmt"
+	"maps"
 	"path"
+	"slices"
 	"sync"
 	"time"
 
@@ -251,12 +253,7 @@ func (r Rule) signalMatches(ev *event.Event) bool {
 	if ev.Signal == nil {
 		return false
 	}
-	for _, s := range r.Signals {
-		if s == *ev.Signal {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(r.Signals, *ev.Signal)
 }
 
 // globMatch treats an empty pattern as "match anything". A malformed pattern
@@ -352,9 +349,5 @@ func (e *Engine) fire(r Rule, f Firing) {
 func (e *Engine) Suppressed() map[string]uint64 {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	out := make(map[string]uint64, len(e.suppressed))
-	for k, v := range e.suppressed {
-		out[k] = v
-	}
-	return out
+	return maps.Clone(e.suppressed)
 }
