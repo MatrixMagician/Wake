@@ -412,23 +412,28 @@ func TestCIDRFilterScopesConnectEvents(t *testing.T) {
 		[]byte{0x20, 0x01, 0x0d, 0xb8}, make([]byte, 12)...))
 	h.src.ch <- connectRecord(4, "outside6", 10, append(
 		[]byte{0xfd, 0x00}, make([]byte, 14)...))
+	// A v4-mapped v6 destination must be matched against the v4 prefix: the
+	// decoder unmaps it, so "::ffff:10.1.2.3" reaches here as "10.1.2.3" and
+	// an operator who wrote 10.0.0.0/8 expects it to count.
+	h.src.ch <- connectRecord(5, "mapped", 10, append(
+		append(make([]byte, 10), 0xff, 0xff), 10, 9, 8, 7))
 	// A non-connect event must pass regardless of the filter.
-	h.src.ch <- exitRecord(5, "unrelated", 1)
+	h.src.ch <- exitRecord(6, "unrelated", 1)
 
 	// The exit record is sent last and is in scope, so once three events have
 	// landed every record above has been processed.
-	waitFor(t, "the in-scope events", func() bool { return h.ring.Len() == 3 })
+	waitFor(t, "the in-scope events", func() bool { return h.ring.Len() == 4 })
 
 	events, _ := h.ring.Freeze()
-	if len(events) != 3 {
-		t.Fatalf("ring holds %d events, want 3: two of the five records are "+
+	if len(events) != 4 {
+		t.Fatalf("ring holds %d events, want 4: two of the six records are "+
 			"outside every configured prefix", len(events))
 	}
 	got := map[string]bool{}
 	for _, ev := range events {
 		got[ev.Comm] = true
 	}
-	for _, want := range []string{"inside", "inside6", "unrelated"} {
+	for _, want := range []string{"inside", "inside6", "mapped", "unrelated"} {
 		if !got[want] {
 			t.Errorf("%q was filtered out but should have been recorded", want)
 		}
