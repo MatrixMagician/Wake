@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted.
+Accepted. Superseded in part by
+[0010](./0010-cidr-filter-implemented-in-the-recorder.md), which records where the
+filter was actually built once it was built at all.
 
 ## Context
 
@@ -37,3 +39,4 @@ lookup, no new map type.
 - If a deployment ever shows connect volume dominating the ring, adding an LPM
   trie is a contained change to `bpf/wake.bpf.c` and the loader, and this
   record should be superseded rather than edited.
+

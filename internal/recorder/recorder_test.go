@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"log/slog"
+	"net/netip"
 	"strings"
 	"sync"
 	"testing"
@@ -143,6 +144,12 @@ type harness struct {
 
 func newHarness(t *testing.T, rules []trigger.Rule, redactor Redactor) *harness {
 	t.Helper()
+	return newHarnessWithCIDRs(t, rules, redactor, nil)
+}
+
+func newHarnessWithCIDRs(t *testing.T, rules []trigger.Rule, redactor Redactor,
+	cidrs []netip.Prefix) *harness {
+	t.Helper()
 
 	drops := &event.Drops{}
 	rg, err := ring.New(time.Hour, 1000, 1<<20, drops)
@@ -166,6 +173,7 @@ func newHarness(t *testing.T, rules []trigger.Rule, redactor Redactor) *harness 
 		Drops:              drops,
 		Logger:             slog.New(slog.DiscardHandler),
 		KernelDropInterval: 5 * time.Millisecond,
+		CIDRs:              cidrs,
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -367,5 +375,114 @@ func TestRunStopsWhenTheSourceCloses(t *testing.T) {
 	case <-h.done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not return after the source closed")
+	}
+}
+
+// connectRecord builds a connect record with the given destination address.
+// family is AF_INET (2) or AF_INET6 (10); addr must be 4 or 16 bytes.
+func connectRecord(pid int32, comm string, family uint16, addr []byte) loader.Record {
+	const connectSize = headerSize + 4 + 4 + 2 + 2 + 2 + 2 + 16 + 16
+	b := make([]byte, connectSize)
+	binary.LittleEndian.PutUint64(b[0:], 1_000_000)
+	binary.LittleEndian.PutUint32(b[8:], 6) // connect
+	binary.LittleEndian.PutUint32(b[12:], decode.WireVersion)
+	binary.LittleEndian.PutUint32(b[16:], uint32(pid)) //nolint:gosec
+	copy(b[40:56], comm)
+	binary.LittleEndian.PutUint32(b[headerSize:], 2)   // old state: SYN_SENT
+	binary.LittleEndian.PutUint32(b[headerSize+4:], 1) // new state: ESTABLISHED
+	binary.LittleEndian.PutUint16(b[headerSize+12:], family)
+	binary.LittleEndian.PutUint16(b[headerSize+14:], 6) // tcp
+	copy(b[headerSize+16+16:], addr)                    // daddr
+	return loader.Record{Raw: b}
+}
+
+// TestCIDRFilterScopesConnectEvents covers the userspace destination filter
+// that ADR 0002 specified. Before it was implemented, filters.cidrs was
+// parsed, validated, and then silently ignored.
+func TestCIDRFilterScopesConnectEvents(t *testing.T) {
+	t.Parallel()
+	h := newHarnessWithCIDRs(t, nil, nil, []netip.Prefix{
+		netip.MustParsePrefix("10.0.0.0/8"),
+		netip.MustParsePrefix("2001:db8::/32"),
+	})
+
+	h.src.ch <- connectRecord(1, "inside", 2, []byte{10, 1, 2, 3})
+	h.src.ch <- connectRecord(2, "outside", 2, []byte{192, 168, 0, 1})
+	h.src.ch <- connectRecord(3, "inside6", 10, append(
+		[]byte{0x20, 0x01, 0x0d, 0xb8}, make([]byte, 12)...))
+	h.src.ch <- connectRecord(4, "outside6", 10, append(
+		[]byte{0xfd, 0x00}, make([]byte, 14)...))
+	// A v4-mapped v6 destination must be matched against the v4 prefix: the
+	// decoder unmaps it, so "::ffff:10.1.2.3" reaches here as "10.1.2.3" and
+	// an operator who wrote 10.0.0.0/8 expects it to count.
+	h.src.ch <- connectRecord(5, "mapped", 10, append(
+		append(make([]byte, 10), 0xff, 0xff), 10, 9, 8, 7))
+	// A non-connect event must pass regardless of the filter.
+	h.src.ch <- exitRecord(6, "unrelated", 1)
+
+	// The exit record is sent last and is in scope, so once three events have
+	// landed every record above has been processed.
+	waitFor(t, "the in-scope events", func() bool { return h.ring.Len() == 4 })
+
+	events, _ := h.ring.Freeze()
+	if len(events) != 4 {
+		t.Fatalf("ring holds %d events, want 4: two of the six records are "+
+			"outside every configured prefix", len(events))
+	}
+	got := map[string]bool{}
+	for _, ev := range events {
+		got[ev.Comm] = true
+	}
+	for _, want := range []string{"inside", "inside6", "mapped", "unrelated"} {
+		if !got[want] {
+			t.Errorf("%q was filtered out but should have been recorded", want)
+		}
+	}
+	for _, unwanted := range []string{"outside", "outside6"} {
+		if got[unwanted] {
+			t.Errorf("%q is outside every configured prefix but was recorded", unwanted)
+		}
+	}
+
+	// Out of scope is not a drop: the operator asked for this.
+	if n := h.drops.Total(); n != 0 {
+		t.Errorf("drops = %d, want 0: a filtered event was never wanted, so "+
+			"counting it would make the connect class look lossy for obeying "+
+			"its configuration", n)
+	}
+}
+
+// TestCIDRFilterKeepsUnclassifiableAddresses pins the deliberate direction of
+// the doubt: an address the decoder could not render is kept, not discarded.
+func TestCIDRFilterKeepsUnclassifiableAddresses(t *testing.T) {
+	t.Parallel()
+	h := newHarnessWithCIDRs(t, nil, nil, []netip.Prefix{
+		netip.MustParsePrefix("10.0.0.0/8"),
+	})
+
+	// Address family 99 is one the decoder does not recognise, so it renders
+	// DAddr as "".
+	h.src.ch <- connectRecord(1, "unknownfam", 99, []byte{1, 2, 3, 4})
+	waitFor(t, "the unclassifiable connect", func() bool { return h.ring.Len() == 1 })
+
+	events, _ := h.ring.Freeze()
+	if len(events) != 1 || events[0].Comm != "unknownfam" {
+		t.Errorf("events = %+v, want the unclassifiable connect kept", events)
+	}
+}
+
+// TestNoCIDRsRecordsEveryConnect pins the unconfigured case: an empty prefix
+// list must mean no address restriction at all, not "match nothing".
+func TestNoCIDRsRecordsEveryConnect(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, nil, nil)
+
+	h.src.ch <- connectRecord(1, "v4", 2, []byte{192, 168, 0, 1})
+	h.src.ch <- connectRecord(2, "v6", 10, append(
+		[]byte{0xfd, 0x00}, make([]byte, 14)...))
+	waitFor(t, "both connects", func() bool { return h.ring.Len() == 2 })
+
+	if n := h.drops.Total(); n != 0 {
+		t.Errorf("drops = %d, want 0 with no filter configured", n)
 	}
 }

@@ -10,6 +10,8 @@ package recorder
 import (
 	"context"
 	"log/slog"
+	"net/netip"
+	"slices"
 	"sync"
 	"time"
 
@@ -42,6 +44,7 @@ type Recorder struct {
 	triggers *trigger.Engine
 	drops    *event.Drops
 	log      *slog.Logger
+	cidrs    []netip.Prefix
 
 	kernelDropInterval time.Duration
 
@@ -61,6 +64,13 @@ type Options struct {
 	Triggers *trigger.Engine
 	Drops    *event.Drops
 	Logger   *slog.Logger
+
+	// CIDRs restricts the connect class to destinations inside one of these
+	// networks. Empty means no address restriction. This filter is applied
+	// here rather than in kernel: an LPM trie per address family is more BPF
+	// complexity than the saving justifies at the connect class's volume.
+	// See docs/decisions/0002-cidr-filtering-in-userspace.md.
+	CIDRs []netip.Prefix
 
 	// KernelDropInterval is how often the BPF-side counters are copied into
 	// the shared report. Zero means the default. It is configurable chiefly so
@@ -87,9 +97,39 @@ func New(o Options) *Recorder {
 		kernelDropInterval: interval,
 		src:                o.Source, dec: o.Decoder, ring: o.Ring,
 		enrich: o.Enricher, redact: o.Redactor, triggers: o.Triggers,
-		drops: o.Drops, log: log,
+		drops: o.Drops, log: log, cidrs: o.CIDRs,
 		watchers: make(map[int]*watcher),
 	}
+}
+
+// destinationAllowed applies the network filter (CONTEXT.md, "Network
+// filter"). A connect event whose destination lies outside every configured
+// prefix never enters the ring, the watch fan-out, or the trigger engine.
+//
+// Deliberately not called "scope": CONTEXT.md reserves that word for the
+// in-kernel filter set, and says anything else filtered in userspace is a bug.
+// This filter is the single documented exception, carrying its own name so the
+// glossary's rule stays true (docs/decisions/0002-cidr-filtering-in-userspace.md).
+//
+// An excluded event is not a drop and must never be counted as one. A drop
+// means something that should have been kept was lost; an event the operator
+// configured Wake not to record was never wanted in the first place. The
+// in-kernel cgroup, comm, path and port filters behave the same way — they
+// simply never emit — so counting this one would make the connect class look
+// lossy for doing exactly what it was told.
+func (r *Recorder) destinationAllowed(ev *event.Event) bool {
+	if len(r.cidrs) == 0 || ev.Class != event.ClassConnect {
+		return true
+	}
+	addr, err := netip.ParseAddr(ev.DAddr)
+	if err != nil {
+		// The decoder renders an address it cannot classify as an empty
+		// string rather than guessing. Keeping it is the right direction for
+		// a flight recorder: discarding evidence because it could not be
+		// classified is how a record quietly becomes incomplete.
+		return true
+	}
+	return slices.ContainsFunc(r.cidrs, func(p netip.Prefix) bool { return p.Contains(addr) })
 }
 
 // Run pumps events until the context is cancelled or the source closes.
@@ -116,6 +156,10 @@ func (r *Recorder) Run(ctx context.Context) error {
 				return nil
 			}
 			ev := r.dec.Decode(rec.Raw)
+
+			if !r.destinationAllowed(&ev) {
+				continue
+			}
 
 			if ev.Class == event.ClassGeneric && ev.DecodeError != "" {
 				// Not a drop: the event is kept. But it is worth knowing that

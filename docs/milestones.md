@@ -116,6 +116,7 @@ Deliberately deferred, each with a recorded decision rather than an omission:
 
 1. **UDP connect capture** — `docs/decisions/0004-udp-deferred.md`.
 2. **In-kernel CIDR filtering** — `docs/decisions/0002-cidr-filtering-in-userspace.md`.
+   Userspace CIDR filtering is implemented; only the in-kernel LPM-trie form is deferred.
 
 Worth doing when convenient:
 

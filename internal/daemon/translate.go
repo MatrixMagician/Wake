@@ -37,14 +37,6 @@ func loaderOptions(cfg *config.Config) (loader.Options, error) {
 	}
 	opts.Ports = ports
 
-	for _, c := range cfg.Filters.CIDRs {
-		p, err := netip.ParsePrefix(c)
-		if err != nil {
-			return opts, fmt.Errorf("filter cidr %q: %w", c, err)
-		}
-		opts.CIDRs = append(opts.CIDRs, p)
-	}
-
 	if cfg.Triggers.Signal.Enabled {
 		for _, name := range cfg.Triggers.Signal.Signals {
 			s, err := config.ParseSignalName(name)
@@ -56,6 +48,24 @@ func loaderOptions(cfg *config.Config) (loader.Options, error) {
 	}
 
 	return opts, nil
+}
+
+// filterCIDRs parses the configured destination-network filter for the
+// recorder. It is not part of loaderOptions because this filter is applied in
+// userspace, after decode and before the ring, rather than in kernel — see
+// docs/decisions/0002-cidr-filtering-in-userspace.md. Prefixes are masked so a
+// value written with host bits set ("10.0.0.1/8") behaves as the network the
+// operator meant.
+func filterCIDRs(cfg *config.Config) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, c := range cfg.Filters.CIDRs {
+		p, err := netip.ParsePrefix(c)
+		if err != nil {
+			return nil, fmt.Errorf("filter cidr %q: %w", c, err)
+		}
+		out = append(out, p.Masked())
+	}
+	return out, nil
 }
 
 // defaultRingBufBytes sizes the kernel ring buffer. 4 MiB absorbs a burst of
