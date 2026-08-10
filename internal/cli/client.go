@@ -233,6 +233,19 @@ func doctorCmd(opts *options) *cobra.Command {
 						}
 					}
 				}
+				// Notes carry no verdict, so they print below the checks
+				// rather than borrowing a status column that would always
+				// read "ok".
+				for _, n := range report.Notes {
+					fmt.Fprintln(out)
+					for i, line := range wrap(n, 72) {
+						prefix := "       "
+						if i == 0 {
+							prefix = "[note] "
+						}
+						fmt.Fprintf(out, "%s%s\n", prefix, line)
+					}
+				}
 				fmt.Fprintln(out)
 				if report.OK() {
 					fmt.Fprintln(out, "This host can run Wake.")
