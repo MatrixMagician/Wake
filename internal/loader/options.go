@@ -3,7 +3,6 @@ package loader
 import (
 	"errors"
 	"fmt"
-	"net/netip"
 )
 
 // Options is everything the loader needs from configuration, expressed in the
@@ -33,12 +32,6 @@ type Options struct {
 	// Ports filters the connect class by destination port. Empty means every
 	// port.
 	Ports []uint16
-
-	// CIDRs filters the connect class by destination network. Applied in
-	// userspace, not in kernel: an LPM-trie per address family is more BPF
-	// complexity than the saving justifies at v1 volumes, and the honest
-	// place to say so is here. See docs/decisions/0002-cidr-filtering.md.
-	CIDRs []netip.Prefix
 
 	// Signals is the allow list for the signal class. Recording every SIGCHLD
 	// on a busy host would drown the ring, so an empty list means the signal

@@ -77,8 +77,15 @@ func TestLoaderOptionsFromConfig(t *testing.T) {
 	if len(opts.Ports) != 1 || opts.Ports[0] != 443 {
 		t.Errorf("ports = %v", opts.Ports)
 	}
-	if len(opts.CIDRs) != 1 || opts.CIDRs[0] != netip.MustParsePrefix("10.0.0.0/8") {
-		t.Errorf("cidrs = %v", opts.CIDRs)
+	// CIDRs are deliberately not part of the loader's options: they are
+	// applied in userspace by the recorder (ADR 0002), so a reader of the
+	// kernel-facing struct cannot mistake them for an in-kernel guarantee.
+	cidrs, err := filterCIDRs(cfg)
+	if err != nil {
+		t.Fatalf("filterCIDRs: %v", err)
+	}
+	if len(cidrs) != 1 || cidrs[0] != netip.MustParsePrefix("10.0.0.0/8") {
+		t.Errorf("cidrs = %v", cidrs)
 	}
 	if opts.SelfPID == 0 {
 		t.Error("SelfPID must be set, or the recorder observes itself")
@@ -88,12 +95,27 @@ func TestLoaderOptionsFromConfig(t *testing.T) {
 	}
 }
 
-func TestLoaderOptionsRejectsBadCIDR(t *testing.T) {
+func TestFilterCIDRsRejectsBadCIDR(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
 	cfg.Filters.CIDRs = []string{"not-a-network"}
-	if _, err := loaderOptions(cfg); err == nil {
+	if _, err := filterCIDRs(cfg); err == nil {
 		t.Error("a malformed CIDR was accepted")
+	}
+}
+
+// TestFilterCIDRsMasksHostBits pins that a prefix written with host bits set
+// means the network the operator intended, not a single address.
+func TestFilterCIDRsMasksHostBits(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Filters.CIDRs = []string{"10.1.2.3/8"}
+	got, err := filterCIDRs(cfg)
+	if err != nil {
+		t.Fatalf("filterCIDRs: %v", err)
+	}
+	if want := netip.MustParsePrefix("10.0.0.0/8"); got[0] != want {
+		t.Errorf("prefix = %v, want %v", got[0], want)
 	}
 }
 

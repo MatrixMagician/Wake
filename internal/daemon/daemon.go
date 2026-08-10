@@ -126,6 +126,11 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return err
 	}
 
+	cidrs, err := filterCIDRs(d.cfg)
+	if err != nil {
+		return err
+	}
+
 	d.rec = recorder.New(recorder.Options{
 		Source:   src,
 		Decoder:  decode.New(decode.BootClock{Boot: boot}),
@@ -135,6 +140,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 		Triggers: d.engine,
 		Drops:    d.drops,
 		Logger:   d.log,
+		CIDRs:    cidrs,
 	})
 
 	var wg sync.WaitGroup
