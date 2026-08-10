@@ -34,54 +34,15 @@ const (
 	TypeUnit Type = "unit"
 )
 
-// ExitPredicate constrains which exits count. The zero value matches any
-// abnormal exit, which is the useful default: a service that exits cleanly is
-// rarely an incident.
-type ExitPredicate struct {
-	// AnyNonZero matches any non-zero exit code or any terminating signal.
-	AnyNonZero bool
-	// Codes matches these exact exit codes.
-	Codes []int32
-	// Signals matches these terminating signals.
-	Signals []int32
-	// AnySignal matches death by any signal.
-	AnySignal bool
-}
-
-// IsZero reports whether the predicate constrains nothing, in which case the
-// AnyNonZero default applies.
-func (p ExitPredicate) IsZero() bool {
-	return !p.AnyNonZero && !p.AnySignal && len(p.Codes) == 0 && len(p.Signals) == 0
-}
-
-// Matches evaluates the predicate against an exit event.
-func (p ExitPredicate) Matches(ev *event.Event) bool {
-	code, sig := int32(0), int32(0)
-	if ev.ExitCode != nil {
-		code = *ev.ExitCode
-	}
-	if ev.ExitSignal != nil {
-		sig = *ev.ExitSignal
-	}
-
-	if p.IsZero() || p.AnyNonZero {
-		return code != 0 || sig != 0
-	}
-	if p.AnySignal && sig != 0 {
-		return true
-	}
-	for _, c := range p.Codes {
-		if code == c {
-			return true
-		}
-	}
-	for _, s := range p.Signals {
-		if sig == s {
-			return true
-		}
-	}
-	return false
-}
+// ExitFunc reports whether a process's exit outcome satisfies a
+// watched-process rule. code is the exit status, and is meaningless when
+// bySignal is true — a process killed by a signal has no exit code.
+//
+// This is a func rather than a struct so that the one place that already knows
+// how to read the user-facing `exit_code` grammar can be handed straight to the
+// engine. The trigger package stays ignorant of the config package: the type is
+// declared here, and config.ExitCodePredicate.Match happens to satisfy it.
+type ExitFunc func(code int32, bySignal bool) bool
 
 // Rule is one configured trigger. Every rule has a cooldown, without which a
 // crash-looping service would fill the snapshot directory in seconds
@@ -97,8 +58,10 @@ type Rule struct {
 	Unit   string
 	Cgroup string
 
-	// Exit constrains TypeProcess rules.
-	Exit ExitPredicate
+	// Exit constrains which exits fire a TypeProcess rule. Nil means the
+	// default — any abnormal exit — because a service that exits cleanly is
+	// rarely an incident.
+	Exit ExitFunc
 
 	// Signals constrains TypeSignal rules. Empty means any signal that
 	// reached the recorder, which the kernel-side allow list already narrowed.
@@ -218,7 +181,7 @@ func (e *Engine) evaluate(ev *event.Event, typ Type) {
 		}
 		switch typ {
 		case TypeProcess:
-			if !r.Exit.Matches(ev) {
+			if !r.exitMatches(ev) {
 				continue
 			}
 		case TypeSignal:
@@ -244,6 +207,23 @@ func (r Rule) scopeMatches(ev *event.Event) bool {
 	return globMatch(r.Comm, ev.Comm) &&
 		globMatch(r.Unit, ev.Unit) &&
 		globMatch(r.Cgroup, ev.Cgroup)
+}
+
+// exitMatches applies the rule's exit constraint to an exit event, unpacking
+// the event's optional code/signal fields into the outcome the predicate is
+// written against.
+func (r Rule) exitMatches(ev *event.Event) bool {
+	var code, sig int32
+	if ev.ExitCode != nil {
+		code = *ev.ExitCode
+	}
+	if ev.ExitSignal != nil {
+		sig = *ev.ExitSignal
+	}
+	if r.Exit == nil {
+		return code != 0 || sig != 0
+	}
+	return r.Exit(code, sig != 0)
 }
 
 func (r Rule) signalMatches(ev *event.Event) bool {

@@ -51,20 +51,27 @@ func mustEngine(t *testing.T, rules []Rule, c Clock) *Engine {
 
 func TestProcessTriggerExitPredicates(t *testing.T) {
 	t.Parallel()
+	// Nil is the documented default: any abnormal exit. The others mirror what
+	// the config grammar compiles to — an exact code, and death by signal.
+	exactCode := func(want int32) ExitFunc {
+		return func(code int32, bySignal bool) bool { return !bySignal && code == want }
+	}
+	anySignal := func(_ int32, bySignal bool) bool { return bySignal }
+
 	for _, tc := range []struct {
 		name string
-		pred ExitPredicate
+		pred ExitFunc
 		ev   *event.Event
 		want bool
 	}{
-		{"default matches non-zero exit", ExitPredicate{}, exitEvent("mstr", 1, 0), true},
-		{"default matches a signal death", ExitPredicate{}, exitEvent("mstr", 0, 11), true},
-		{"default ignores a clean exit", ExitPredicate{}, exitEvent("mstr", 0, 0), false},
-		{"specific code matches", ExitPredicate{Codes: []int32{137}}, exitEvent("mstr", 137, 0), true},
-		{"specific code ignores others", ExitPredicate{Codes: []int32{137}}, exitEvent("mstr", 1, 0), false},
-		{"specific signal matches", ExitPredicate{Signals: []int32{9}}, exitEvent("mstr", 0, 9), true},
-		{"any signal matches", ExitPredicate{AnySignal: true}, exitEvent("mstr", 0, 6), true},
-		{"any signal ignores a code-only exit", ExitPredicate{AnySignal: true}, exitEvent("mstr", 3, 0), false},
+		{"default matches non-zero exit", nil, exitEvent("mstr", 1, 0), true},
+		{"default matches a signal death", nil, exitEvent("mstr", 0, 11), true},
+		{"default ignores a clean exit", nil, exitEvent("mstr", 0, 0), false},
+		{"specific code matches", exactCode(137), exitEvent("mstr", 137, 0), true},
+		{"specific code ignores others", exactCode(137), exitEvent("mstr", 1, 0), false},
+		{"specific code ignores a signal death", exactCode(137), exitEvent("mstr", 0, 9), false},
+		{"any signal matches", anySignal, exitEvent("mstr", 0, 6), true},
+		{"any signal ignores a code-only exit", anySignal, exitEvent("mstr", 3, 0), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			e := mustEngine(t, []Rule{{
