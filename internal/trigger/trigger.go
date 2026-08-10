@@ -331,3 +331,12 @@ func (e *Engine) Suppressed() map[string]uint64 {
 	defer e.mu.Unlock()
 	return maps.Clone(e.suppressed)
 }
+
+// LastFired reports when each rule last fired, for `wake status`. Rules that
+// have never fired are absent rather than present with a zero time, so a
+// caller cannot mistake "never" for "at the epoch". Returns a copy.
+func (e *Engine) LastFired() map[string]time.Time {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return maps.Clone(e.lastFire)
+}

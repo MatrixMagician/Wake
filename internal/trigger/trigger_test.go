@@ -269,3 +269,38 @@ func TestObserveNeverBlocks(t *testing.T) {
 		t.Error("firings dropped by a full channel must still be counted")
 	}
 }
+
+// TestLastFiredTracksFirings covers what `wake status` shows next to each
+// rule. A rule that has never fired must be absent rather than present with a
+// zero time, or the display would claim a firing at the epoch.
+func TestLastFiredTracksFirings(t *testing.T) {
+	t.Parallel()
+	clk := newClock()
+	e := mustEngine(t, []Rule{
+		{Name: "oom", Type: TypeOOM},
+		{Name: "quiet", Type: TypeOOM, Comm: "never-matches"},
+	}, clk)
+
+	if got := e.LastFired(); len(got) != 0 {
+		t.Errorf("LastFired on a fresh engine = %v, want empty", got)
+	}
+
+	ev := &event.Event{Class: event.ClassOOM, PID: 99}
+	ev.Comm = "mstr"
+	e.Observe(ev)
+	drain(e)
+
+	fired := e.LastFired()
+	if _, ok := fired["oom"]; !ok {
+		t.Error("the rule that fired is missing from LastFired")
+	}
+	if _, ok := fired["quiet"]; ok {
+		t.Error("a rule that never fired must be absent, not zero-valued")
+	}
+
+	// The returned map is a copy: mutating it must not corrupt the engine.
+	fired["oom"] = time.Time{}
+	if again := e.LastFired(); again["oom"].IsZero() {
+		t.Error("LastFired handed out a reference to the engine's own map")
+	}
+}

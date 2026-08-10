@@ -177,6 +177,28 @@ func (r *Ring) Len() int {
 	return r.active.count()
 }
 
+// Span reports the timestamps of the oldest and newest events currently held,
+// or two nils when the ring is empty. It answers the first question an
+// operator asks during an incident: how much history would a snapshot taken
+// right now actually contain?
+//
+// The bounds are read from the ends of the live window rather than by scanning
+// for the true minimum and maximum, which keeps this O(1) on a ring that may
+// hold hundreds of thousands of events. That is the same assumption eviction
+// already makes — it treats the front entry as the oldest — so the two cannot
+// disagree. The snapshot writer still sorts by timestamp, so a slightly
+// out-of-order arrival affects this display and nothing else.
+func (r *Ring) Span() (oldest, newest *time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.active.count() == 0 {
+		return nil, nil
+	}
+	o := r.active.entries[r.active.front].Timestamp
+	n := r.active.entries[len(r.active.entries)-1].Timestamp
+	return &o, &n
+}
+
 // Bytes reports the estimated memory currently held, per event.Event.Size().
 // Intended for `wake status` alongside Len.
 func (r *Ring) Bytes() int64 {

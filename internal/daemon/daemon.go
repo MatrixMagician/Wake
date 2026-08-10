@@ -344,12 +344,15 @@ func (d *Daemon) Status() ctl.Status {
 	snaps, size, last := d.snapshots, d.snapshotSize, d.lastSnapshot
 	d.mu.Unlock()
 
+	oldest, newest := d.ring.Span()
 	st := ctl.Status{
 		Version:       version.Version,
 		PID:           os.Getpid(),
 		StartedAt:     d.startedAt,
 		Uptime:        time.Since(d.startedAt),
 		Events:        d.ring.Len(),
+		OldestEvent:   oldest,
+		NewestEvent:   newest,
 		MaxEvents:     d.cfg.Ring.MaxEvents,
 		Bytes:         int(d.ring.Bytes()),
 		MaxBytes:      int(d.cfg.Ring.MemoryBudgetBytes),
@@ -363,15 +366,20 @@ func (d *Daemon) Status() ctl.Status {
 	}
 
 	suppressed := d.engine.Suppressed()
+	lastFired := d.engine.LastFired()
 	rules, err := triggerRules(d.cfg)
 	if err == nil {
 		for _, r := range rules {
-			st.Rules = append(st.Rules, ctl.RuleStatus{
+			rs := ctl.RuleStatus{
 				Name:       r.Name,
 				Type:       string(r.Type),
 				Cooldown:   r.Cooldown.String(),
 				Suppressed: suppressed[r.Name],
-			})
+			}
+			if t, ok := lastFired[r.Name]; ok {
+				rs.LastFired = &t
+			}
+			st.Rules = append(st.Rules, rs)
 		}
 	}
 	return st
