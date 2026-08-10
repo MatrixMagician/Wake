@@ -378,7 +378,6 @@ func TestRunStopsWhenTheSourceCloses(t *testing.T) {
 	}
 }
 
-
 // connectRecord builds a connect record with the given destination address.
 // family is AF_INET (2) or AF_INET6 (10); addr must be 4 or 16 bytes.
 func connectRecord(pid int32, comm string, family uint16, addr []byte) loader.Record {
