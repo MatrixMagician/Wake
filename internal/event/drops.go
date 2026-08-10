@@ -1,6 +1,9 @@
 package event
 
-import "sync/atomic"
+import (
+	"slices"
+	"sync/atomic"
+)
 
 // Boundary names a place where an event can be lost. Drop accounting is
 // load-bearing: a flight recorder that silently loses events is worse than
@@ -25,68 +28,64 @@ const (
 	BoundaryWatch Boundary = "watch_fanout"
 )
 
-// Boundaries lists every boundary in a stable reporting order.
-var Boundaries = []Boundary{BoundaryKernel, BoundaryDecode, BoundaryRing, BoundaryWatch}
+// Boundaries lists every boundary in a stable reporting order. Like
+// [Classes], it is an array so that len(Boundaries) is a compile-time
+// constant.
+var Boundaries = [...]Boundary{BoundaryKernel, BoundaryDecode, BoundaryRing, BoundaryWatch}
 
 // Drops is a concurrent per-boundary, per-class drop counter.
 //
 // The zero value is ready to use. Counters only ever increase; a snapshot
 // records absolute values so that a reader can difference two snapshots.
+//
+// The grid is sized directly from [Boundaries] and [Classes], so adding a
+// boundary or a class needs no other edit here. Drop accounting is the one
+// thing in this package that must not quietly go wrong, and a hand-maintained
+// count beside the lists it was supposed to match is exactly how it would.
 type Drops struct {
-	counts [numBoundaries][numClasses]atomic.Uint64
+	counts [len(Boundaries)][len(Classes)]atomic.Uint64
 }
 
-const (
-	numBoundaries = 4
-	numClasses    = 7
-)
-
-var boundaryIndex = map[Boundary]int{
-	BoundaryKernel: 0, BoundaryDecode: 1, BoundaryRing: 2, BoundaryWatch: 3,
+// writeIndex locates the counter to record into for boundary b and class c.
+//
+// An unknown class folds into the generic class rather than being discarded,
+// because losing the record of a loss is the one unacceptable failure here.
+// An unknown boundary has no such fallback — there is no "generic boundary" —
+// so it reports !ok and the update is dropped.
+func writeIndex(b Boundary, c Class) (bi, ci int, ok bool) {
+	bi = slices.Index(Boundaries[:], b)
+	if bi < 0 {
+		return 0, 0, false
+	}
+	ci = slices.Index(Classes[:], c)
+	if ci < 0 {
+		ci = slices.Index(Classes[:], ClassGeneric)
+	}
+	return bi, ci, true
 }
 
-var classIndex = map[Class]int{
-	ClassExec: 0, ClassExit: 1, ClassSignal: 2, ClassOOM: 3,
-	ClassOpen: 4, ClassConnect: 5, ClassGeneric: 6,
-}
-
-// Add records n drops at boundary b for class c. Unknown boundaries or classes
-// are folded into the generic class rather than discarded, because losing the
-// record of a loss is the one unacceptable failure here.
+// Add records n drops at boundary b for class c.
 func (d *Drops) Add(b Boundary, c Class, n uint64) {
-	bi, ok := boundaryIndex[b]
-	if !ok {
-		return
+	if bi, ci, ok := writeIndex(b, c); ok {
+		d.counts[bi][ci].Add(n)
 	}
-	ci, ok := classIndex[c]
-	if !ok {
-		ci = classIndex[ClassGeneric]
-	}
-	d.counts[bi][ci].Add(n)
 }
 
 // Set overwrites the counter at boundary b for class c. Used for counters
 // owned by the kernel, which are read rather than incremented.
 func (d *Drops) Set(b Boundary, c Class, n uint64) {
-	bi, ok := boundaryIndex[b]
-	if !ok {
-		return
+	if bi, ci, ok := writeIndex(b, c); ok {
+		d.counts[bi][ci].Store(n)
 	}
-	ci, ok := classIndex[c]
-	if !ok {
-		ci = classIndex[ClassGeneric]
-	}
-	d.counts[bi][ci].Store(n)
 }
 
-// Get returns the counter at boundary b for class c.
+// Get returns the counter at boundary b for class c. Unlike Add and Set, an
+// unknown class reads as zero rather than folding into generic: a reader
+// asking about a class that does not exist must not be handed some other
+// class's count.
 func (d *Drops) Get(b Boundary, c Class) uint64 {
-	bi, ok := boundaryIndex[b]
-	if !ok {
-		return 0
-	}
-	ci, ok := classIndex[c]
-	if !ok {
+	bi, ci := slices.Index(Boundaries[:], b), slices.Index(Classes[:], c)
+	if bi < 0 || ci < 0 {
 		return 0
 	}
 	return d.counts[bi][ci].Load()

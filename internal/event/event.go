@@ -36,12 +36,16 @@ const (
 
 // Classes lists every class in a stable order, for iteration in config
 // validation, status output and drop accounting.
-var Classes = []Class{
+//
+// It is an array rather than a slice so that len(Classes) is a compile-time
+// constant, which is what lets Drops size its counter grid from it directly
+// instead of restating the count in a constant that could drift.
+var Classes = [...]Class{
 	ClassExec, ClassExit, ClassSignal, ClassOOM, ClassOpen, ClassConnect, ClassGeneric,
 }
 
 // Valid reports whether c is a known class.
-func (c Class) Valid() bool { return slices.Contains(Classes, c) }
+func (c Class) Valid() bool { return slices.Contains(Classes[:], c) }
 
 // Enrichment is the attribution attached to an event at snapshot time from the
 // enrichment cache. Fields are best-effort: an empty value means "not known",
