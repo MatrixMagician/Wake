@@ -5,9 +5,9 @@
 # a knob exists in code but is undocumented here (or vice versa) — treat it
 # as the config reference, not just an example.
 #
-# Precedence: CLI flags > WAKE_* environment variables > this file >
-# built-in defaults. A missing or absent config file is not an error: a
-# zero-config `wake run` works safely out of the box.
+# Precedence: CLI flags > this file > built-in defaults. A missing or absent
+# config file is not an error: a zero-config `wake run` works safely out of
+# the box.
 #
 # Validate a copy of this file with:
 #   wake verify-config /etc/wake/wake.toml

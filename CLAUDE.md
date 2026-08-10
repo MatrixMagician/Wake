@@ -81,7 +81,7 @@ BPF (tracepoints + in-kernel filters) --ringbuf--> reader -> decode -> bounded r
   `BurntSushi/toml`, `spf13/cobra`. Justify anything beyond these.
 - Errors wrap with context (`fmt.Errorf("...: %w", err)`); no panics outside `main` init paths.
 - British English in docs and user-facing strings.
-- Config precedence: CLI flags > `WAKE_*` env > `/etc/wake/wake.toml` > defaults.
+- Config precedence: CLI flags > `/etc/wake/wake.toml` > defaults.
   The `[classes]` table *merges* with the defaults rather than replacing them, so
   omitting a class leaves it enabled; disabling one requires saying `false`.
 - Record decisions for SPEC.md §10 open questions in `docs/decisions/NNNN-title.md`.
