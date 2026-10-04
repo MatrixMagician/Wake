@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -311,7 +310,7 @@ func (l *Loader) pump() {
 		copy(raw, rec.RawSample)
 
 		select {
-		case l.records <- Record{Raw: raw, Read: time.Now()}:
+		case l.records <- Record{Raw: raw}:
 		case <-l.closed:
 			return
 		}

@@ -5,7 +5,7 @@ import (
 	"net"
 	"path"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -36,7 +36,7 @@ func (c *Config) Validate() error {
 	if len(errs) == 0 {
 		return nil
 	}
-	sort.Strings(errs)
+	slices.Sort(errs)
 	return fmt.Errorf("invalid configuration:\n  - %s", strings.Join(errs, "\n  - "))
 }
 

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/MatrixMagician/wake/internal/config"
-	"github.com/MatrixMagician/wake/internal/event"
 	"github.com/MatrixMagician/wake/internal/trigger"
 )
 
@@ -78,8 +77,15 @@ func TestLoaderOptionsFromConfig(t *testing.T) {
 	if len(opts.Ports) != 1 || opts.Ports[0] != 443 {
 		t.Errorf("ports = %v", opts.Ports)
 	}
-	if len(opts.CIDRs) != 1 || opts.CIDRs[0] != netip.MustParsePrefix("10.0.0.0/8") {
-		t.Errorf("cidrs = %v", opts.CIDRs)
+	// CIDRs are deliberately not part of the loader's options: they are
+	// applied in userspace by the recorder (ADR 0002), so a reader of the
+	// kernel-facing struct cannot mistake them for an in-kernel guarantee.
+	cidrs, err := filterCIDRs(cfg)
+	if err != nil {
+		t.Fatalf("filterCIDRs: %v", err)
+	}
+	if len(cidrs) != 1 || cidrs[0] != netip.MustParsePrefix("10.0.0.0/8") {
+		t.Errorf("cidrs = %v", cidrs)
 	}
 	if opts.SelfPID == 0 {
 		t.Error("SelfPID must be set, or the recorder observes itself")
@@ -89,12 +95,27 @@ func TestLoaderOptionsFromConfig(t *testing.T) {
 	}
 }
 
-func TestLoaderOptionsRejectsBadCIDR(t *testing.T) {
+func TestFilterCIDRsRejectsBadCIDR(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default()
 	cfg.Filters.CIDRs = []string{"not-a-network"}
-	if _, err := loaderOptions(cfg); err == nil {
+	if _, err := filterCIDRs(cfg); err == nil {
 		t.Error("a malformed CIDR was accepted")
+	}
+}
+
+// TestFilterCIDRsMasksHostBits pins that a prefix written with host bits set
+// means the network the operator intended, not a single address.
+func TestFilterCIDRsMasksHostBits(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Filters.CIDRs = []string{"10.1.2.3/8"}
+	got, err := filterCIDRs(cfg)
+	if err != nil {
+		t.Fatalf("filterCIDRs: %v", err)
+	}
+	if want := netip.MustParsePrefix("10.0.0.0/8"); got[0] != want {
+		t.Errorf("prefix = %v, want %v", got[0], want)
 	}
 }
 
@@ -150,9 +171,9 @@ func TestTriggerRulesRejectsBadExitPredicate(t *testing.T) {
 	}
 }
 
-// TestExitPredicateBridge checks the config→trigger predicate bridge against
-// the behaviours the grammar promises.
-func TestExitPredicateBridge(t *testing.T) {
+// TestWatchedProcessExitPredicate checks that the config grammar reaches the
+// engine meaning what it says.
+func TestWatchedProcessExitPredicate(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		spec      string
@@ -165,20 +186,57 @@ func TestExitPredicateBridge(t *testing.T) {
 		{"signal", 9, true, true},
 		{"137", 137, false, true},
 		{"137", 1, false, false},
+		// The grammar says a comparison never matches a death by signal, since
+		// there is no code to compare. The struct-shaped bridge this replaced
+		// promoted any predicate that happened to accept code 1 into "any
+		// abnormal exit", so ">0" fired on a SIGSEGV and "<5" fired on code 200.
+		{">0", 5, false, true},
+		{">0", 0, true, false},
+		{"<5", 1, false, true},
+		{"<5", 200, false, false},
 	} {
 		t.Run(tc.spec, func(t *testing.T) {
-			p, err := config.ParseExitCodePredicate(tc.spec)
-			if err != nil {
-				t.Fatalf("ParseExitCodePredicate(%q): %v", tc.spec, err)
+			cfg := config.Default()
+			cfg.Triggers.WatchedProcess = []config.WatchedProcessTrigger{
+				{Name: "w", ExitCode: tc.spec},
 			}
-			bridged := exitPredicate(p)
-
-			ev := exitEventFor(tc.code, tc.bySignal)
-			if got := bridged.Matches(ev); got != tc.wantMatch {
+			rules, err := triggerRules(cfg)
+			if err != nil {
+				t.Fatalf("triggerRules: %v", err)
+			}
+			if rules[0].Exit == nil {
+				t.Fatalf("exit_code %q compiled to a nil predicate", tc.spec)
+			}
+			if got := rules[0].Exit(tc.code, tc.bySignal); got != tc.wantMatch {
 				t.Errorf("predicate %q on code=%d signal=%v: matched=%v, want %v",
 					tc.spec, tc.code, tc.bySignal, got, tc.wantMatch)
 			}
 		})
+	}
+}
+
+// TestUnsetExitCodeKeepsTheAbnormalExitDefault pins the distinction between an
+// unset exit_code and an explicit "any". Unset must leave the predicate nil so
+// the engine applies its own default; "any" means what it says and fires on a
+// clean exit too.
+func TestUnsetExitCodeKeepsTheAbnormalExitDefault(t *testing.T) {
+	t.Parallel()
+	cfg := config.Default()
+	cfg.Triggers.WatchedProcess = []config.WatchedProcessTrigger{
+		{Name: "unset"}, {Name: "explicit", ExitCode: "any"},
+	}
+	rules, err := triggerRules(cfg)
+	if err != nil {
+		t.Fatalf("triggerRules: %v", err)
+	}
+	if rules[0].Exit != nil {
+		t.Error("an unset exit_code should leave Exit nil so the engine's abnormal-exit default applies")
+	}
+	if rules[1].Exit == nil {
+		t.Fatal(`an explicit "any" should compile to a predicate`)
+	}
+	if !rules[1].Exit(0, false) {
+		t.Error(`exit_code = "any" should match a clean exit; the grammar says any exit`)
 	}
 }
 
@@ -212,20 +270,6 @@ func TestDaemonStatusIsLockSafe(t *testing.T) {
 }
 
 // Helpers, kept at the bottom so the tests above read as behaviour.
-
-func exitEventFor(code int32, bySignal bool) *event.Event {
-	ev := &event.Event{Class: event.ClassExit}
-	if bySignal {
-		sig := code
-		ev.ExitSignal = &sig
-		zero := int32(0)
-		ev.ExitCode = &zero
-		return ev
-	}
-	c := code
-	ev.ExitCode = &c
-	return ev
-}
 
 func socketInTempDir(t *testing.T) string {
 	t.Helper()

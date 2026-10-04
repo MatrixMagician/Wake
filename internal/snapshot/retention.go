@@ -2,7 +2,7 @@ package snapshot
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -77,7 +77,7 @@ func (p *Pruner) Prune(settings RetentionSettings, dryRun bool) (PruneResult, er
 
 	// Oldest first: snapshot IDs are RFC3339-ish-prefixed, so lexical order
 	// is chronological order (see id.go).
-	sort.Slice(candidates, func(i, j int) bool { return candidates[i].id < candidates[j].id })
+	slices.SortFunc(candidates, func(a, b candidate) int { return strings.Compare(a.id, b.id) })
 
 	var total int64
 	for _, c := range candidates {

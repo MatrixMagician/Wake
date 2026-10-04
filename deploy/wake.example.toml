@@ -5,9 +5,9 @@
 # a knob exists in code but is undocumented here (or vice versa) — treat it
 # as the config reference, not just an example.
 #
-# Precedence: CLI flags > WAKE_* environment variables > this file >
-# built-in defaults. A missing or absent config file is not an error: a
-# zero-config `wake run` works safely out of the box.
+# Precedence: CLI flags > this file > built-in defaults. A missing or absent
+# config file is not an error: a zero-config `wake run` works safely out of
+# the box.
 #
 # Validate a copy of this file with:
 #   wake verify-config /etc/wake/wake.toml
@@ -80,6 +80,13 @@ cidrs = []
 # unit_glob   = "mstr-iserver.service"   # glob against systemd unit; empty matches any
 # exit_code   = "nonzero"                # "", "any", "signal", "nonzero", "N", or a
 #                                        # comparison like ">0", ">=1", "<0", "<=-1"
+#
+# Note the difference between omitting exit_code and setting it to "any".
+# Omitted means any *abnormal* exit — a non-zero code or a terminating signal —
+# which is almost always what a watched-process rule wants. "any" means what it
+# says and fires on a clean exit too, so a service that restarts normally will
+# produce a snapshot every time it stops, subject only to the cooldown.
+# A comparison (">0") never matches a death by signal: there is no code to compare.
 # cooldown    = "1m"
 
 [triggers.oom]

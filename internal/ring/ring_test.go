@@ -399,3 +399,67 @@ func timestamps(es []event.Event) []string {
 	}
 	return out
 }
+
+// TestSpanReportsTheLiveWindow covers `wake status`'s "how much history am I
+// looking at?" line, which reported nothing at all until Span existed.
+func TestSpanReportsTheLiveWindow(t *testing.T) {
+	t.Parallel()
+	var drops event.Drops
+	r, err := New(time.Hour, 100, 1<<20, &drops)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if oldest, newest := r.Span(); oldest != nil || newest != nil {
+		t.Errorf("empty ring reported a span of %v..%v, want two nils", oldest, newest)
+	}
+
+	base := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
+	for i := range 5 {
+		r.Record(event.Event{
+			Class:     event.ClassExec,
+			Timestamp: base.Add(time.Duration(i) * time.Second),
+		})
+	}
+
+	oldest, newest := r.Span()
+	if oldest == nil || newest == nil {
+		t.Fatalf("populated ring reported %v..%v, want both set", oldest, newest)
+	}
+	if !oldest.Equal(base) {
+		t.Errorf("oldest = %v, want %v", oldest, base)
+	}
+	if want := base.Add(4 * time.Second); !newest.Equal(want) {
+		t.Errorf("newest = %v, want %v", newest, want)
+	}
+}
+
+// TestSpanFollowsEviction pins that the reported window shrinks from the front
+// as events are evicted: a span covering events the ring no longer holds would
+// overstate how much history a snapshot would contain.
+func TestSpanFollowsEviction(t *testing.T) {
+	t.Parallel()
+	var drops event.Drops
+	r, err := New(time.Hour, 3, 1<<20, &drops)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	base := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
+	for i := range 5 {
+		r.Record(event.Event{
+			Class:     event.ClassExec,
+			Timestamp: base.Add(time.Duration(i) * time.Second),
+		})
+	}
+
+	oldest, _ := r.Span()
+	if oldest == nil {
+		t.Fatal("span is empty after recording")
+	}
+	// Count bound is 3, so the first two events are gone.
+	if want := base.Add(2 * time.Second); !oldest.Equal(want) {
+		t.Errorf("oldest = %v, want %v: the span must not name an evicted event",
+			oldest, want)
+	}
+}

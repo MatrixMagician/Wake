@@ -11,16 +11,25 @@ raw payload retained; it is never discarded.
 decode path, filters, and drop counter.
 
 **Scope** — the in-kernel filter set deciding what is recorded at all: cgroup subtree, comm
-allow/deny list, path prefixes, port/CIDR sets. Scope is enforced *before* an event crosses
-to userspace; anything filtered in userspace is a bug, not a scope.
+allow/deny list, path prefixes, port sets. Scope is enforced *before* an event crosses
+to userspace; anything else filtered in userspace is a bug, not a scope.
+
+**Network filter** — the one deliberate exception to Scope: `filters.cidrs` restricts
+`connect` events by destination network in *userspace*, after decode and before the ring,
+because prefix matching in kernel needs an LPM trie per address family and the connect class
+is too low-volume to earn that (`docs/decisions/0002-cidr-filtering-in-userspace.md`). It is
+named separately from Scope precisely so that "scope" keeps meaning "in kernel". Like Scope,
+and unlike a *Drop*, an event it excludes is not counted anywhere: it was never wanted.
 
 **Ring** — the bounded in-memory buffer of decoded events. Bounded simultaneously by time
 window, event count, and memory budget; whichever binds first wins. Oldest is overwritten.
 The ring is the only steady-state memory consumer.
 
-**Drop** — an event that existed but is not in the ring, at any boundary (BPF ringbuf full,
+**Drop** — an event that existed and was *lost*, at any boundary (BPF ringbuf full,
 userspace ring overwrite, watch fan-out backpressure). Every drop is counted per class per
 boundary and reported in `status` and every snapshot manifest. Drops are honest, never hidden.
+An event excluded by *Scope* or the *Network filter* is not a drop: it was never wanted, and
+counting it would make a correctly-configured recorder look lossy.
 
 **Trigger** — a rule that causes a snapshot: watched-process exit predicate, OOM kill in
 scope, configured signal delivered in scope, manual request, or a systemd unit entering

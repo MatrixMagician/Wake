@@ -1,11 +1,11 @@
 // Package config loads, validates and hashes Wake's single TOML configuration
 // file (SPEC.md §4, "Config is one TOML file").
 //
-// Precedence is CLI flags > WAKE_* environment variables > the config file >
-// built-in defaults (CLAUDE.md, "Config precedence"). This package owns the
-// last three layers: [Load] applies defaults, then the file, then the
-// environment, and returns an exported [*Config] whose fields the CLI layer
-// may then overwrite directly before calling [Config.Validate] again. That
+// Precedence is CLI flags > the config file > built-in defaults (CLAUDE.md,
+// "Config precedence"). This package owns the last two layers: [Load] applies
+// defaults, then the file, and returns an exported [*Config] whose fields the
+// CLI layer may then overwrite directly before calling [Config.Validate]
+// again. That
 // direct-field-write is the "merge point for flags" other packages use;
 // nothing in this package parses `os.Args`.
 package config

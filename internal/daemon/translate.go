@@ -37,14 +37,6 @@ func loaderOptions(cfg *config.Config) (loader.Options, error) {
 	}
 	opts.Ports = ports
 
-	for _, c := range cfg.Filters.CIDRs {
-		p, err := netip.ParsePrefix(c)
-		if err != nil {
-			return opts, fmt.Errorf("filter cidr %q: %w", c, err)
-		}
-		opts.CIDRs = append(opts.CIDRs, p)
-	}
-
 	if cfg.Triggers.Signal.Enabled {
 		for _, name := range cfg.Triggers.Signal.Signals {
 			s, err := config.ParseSignalName(name)
@@ -56,6 +48,24 @@ func loaderOptions(cfg *config.Config) (loader.Options, error) {
 	}
 
 	return opts, nil
+}
+
+// filterCIDRs parses the configured destination-network filter for the
+// recorder. It is not part of loaderOptions because this filter is applied in
+// userspace, after decode and before the ring, rather than in kernel — see
+// docs/decisions/0002-cidr-filtering-in-userspace.md. Prefixes are masked so a
+// value written with host bits set ("10.0.0.1/8") behaves as the network the
+// operator meant.
+func filterCIDRs(cfg *config.Config) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, c := range cfg.Filters.CIDRs {
+		p, err := netip.ParsePrefix(c)
+		if err != nil {
+			return nil, fmt.Errorf("filter cidr %q: %w", c, err)
+		}
+		out = append(out, p.Masked())
+	}
+	return out, nil
 }
 
 // defaultRingBufBytes sizes the kernel ring buffer. 4 MiB absorbs a burst of
@@ -110,15 +120,22 @@ func triggerRules(cfg *config.Config) ([]trigger.Rule, error) {
 		if err != nil {
 			return nil, fmt.Errorf("trigger %q: %w", w.Name, err)
 		}
-		rules = append(rules, trigger.Rule{
+		rule := trigger.Rule{
 			Name:     w.Name,
 			Type:     trigger.TypeProcess,
 			Cooldown: w.Cooldown,
 			Comm:     w.CommGlob,
 			Cgroup:   w.CgroupGlob,
 			Unit:     w.UnitGlob,
-			Exit:     exitPredicate(pred),
-		})
+		}
+		// An unset exit_code leaves Exit nil, which the engine reads as its
+		// documented default: any abnormal exit. That is deliberately not the
+		// same as an explicit "any", which per the config grammar matches every
+		// exit, clean ones included.
+		if strings.TrimSpace(w.ExitCode) != "" {
+			rule.Exit = pred.Match
+		}
+		rules = append(rules, rule)
 	}
 
 	if cfg.Triggers.OOM.Enabled {
@@ -159,31 +176,4 @@ func triggerRules(cfg *config.Config) ([]trigger.Rule, error) {
 	}
 
 	return rules, nil
-}
-
-// exitPredicate bridges the config predicate to the trigger one. They are
-// separate types on purpose: the config type parses a user-facing grammar,
-// and the trigger type evaluates decoded events.
-func exitPredicate(p config.ExitCodePredicate) trigger.ExitPredicate {
-	out := trigger.ExitPredicate{}
-	// The config predicate exposes only a Match method, so the bridge asks it
-	// the questions the engine needs answered rather than reaching inside.
-	out.AnyNonZero = p.Match(1, false)
-	out.AnySignal = p.Match(0, true)
-	for code := int32(1); code < 256; code++ {
-		if p.Match(code, false) {
-			out.Codes = append(out.Codes, code)
-		}
-	}
-	for sig := int32(1); sig <= 64; sig++ {
-		if p.Match(sig, true) {
-			out.Signals = append(out.Signals, sig)
-		}
-	}
-	if out.AnyNonZero && len(out.Codes) == 255 {
-		// The predicate accepts every non-zero code; say so compactly rather
-		// than carrying a 255-element list into every comparison.
-		out.Codes = nil
-	}
-	return out
 }

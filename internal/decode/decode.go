@@ -8,6 +8,7 @@
 package decode
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -325,19 +326,10 @@ func addr(b []byte, family uint16) string {
 
 // cstring reads a NUL-terminated string from a fixed-width field.
 func cstring(b []byte) string {
-	if i := indexByte(b, 0); i >= 0 {
+	if i := bytes.IndexByte(b, 0); i >= 0 {
 		b = b[:i]
 	}
 	return string(b)
-}
-
-func indexByte(b []byte, c byte) int {
-	for i, x := range b {
-		if x == c {
-			return i
-		}
-	}
-	return -1
 }
 
 // splitArgv splits the kernel's NUL-separated argv block. A trailing partial

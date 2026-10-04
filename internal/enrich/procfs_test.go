@@ -19,7 +19,7 @@ func TestProcfsSourceAgainstSelf(t *testing.T) {
 	s := NewProcfsSource()
 	pid := int32(os.Getpid())
 
-	comm, ppid, uid, ok := s.Status(pid)
+	comm, ppid, ok := s.Status(pid)
 	if !ok {
 		t.Fatal("Status(self) reported not ok")
 	}
@@ -28,9 +28,6 @@ func TestProcfsSourceAgainstSelf(t *testing.T) {
 	}
 	if ppid <= 0 {
 		t.Errorf("Status(self): ppid = %d, want > 0", ppid)
-	}
-	if uid != uint32(os.Getuid()) {
-		t.Errorf("Status(self): uid = %d, want %d", uid, os.Getuid())
 	}
 
 	if _, ok := s.Cgroup(pid); !ok {
@@ -43,7 +40,7 @@ func TestProcfsSourceAgainstSelf(t *testing.T) {
 	}
 
 	// A wildly implausible pid must report ok=false, not panic or fabricate.
-	if _, _, _, ok := s.Status(1 << 30); ok {
+	if _, _, ok := s.Status(1 << 30); ok {
 		t.Error("Status(huge pid) unexpectedly ok")
 	}
 }

@@ -111,7 +111,7 @@ func TestExitedProcessStaysAttributable(t *testing.T) {
 // procfs source rather than leaving the enrichment empty.
 func TestResolveFallsBackToProcfsForUnobservedPID(t *testing.T) {
 	src := NewFakeSource()
-	src.StatusByPID[555] = FakeStatus{Comm: "sshd", PPid: 1, UID: 0}
+	src.StatusByPID[555] = FakeStatus{Comm: "sshd", PPid: 1}
 	src.CgroupByPID[555] = "/system.slice/sshd.service"
 	c := New(10, 2, src)
 
